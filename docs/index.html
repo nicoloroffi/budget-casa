@@ -2,6 +2,15 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
+<script>
+  (function () {
+    try {
+      if (sessionStorage.getItem('idToken') && sessionStorage.getItem('userEmail')) {
+        document.documentElement.classList.add('authed-preload');
+      }
+    } catch (e) {}
+  })();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Budget Casa</title>
 <meta name="theme-color" content="#F6F7F5" />
