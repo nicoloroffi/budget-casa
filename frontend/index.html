@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Budget Casa</title>
+<meta name="theme-color" content="#F6F7F5" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Budget Casa" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ===== SCHERMATA LOGIN ===== -->
+  <section id="login-screen" class="screen login-screen">
+    <div class="login-card">
+      <div class="login-mark">€</div>
+      <h1>Budget Casa</h1>
+      <p class="login-sub">Accedi con l'account Google per gestire le spese di casa.</p>
+      <div id="google-signin-button"></div>
+      <p id="login-error" class="login-error" hidden></p>
+    </div>
+  </section>
+
+  <!-- ===== APP PRINCIPALE ===== -->
+  <div id="app" class="app" hidden>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">€</span>
+        <span class="brand-name">Budget Casa</span>
+      </div>
+      <div class="user-box">
+        <span id="user-label" class="user-label"></span>
+        <button id="logout-btn" class="btn-ghost" type="button">Esci</button>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="aggiungi">Aggiungi</button>
+      <button class="tab-btn" data-tab="elenco">Elenco</button>
+      <button class="tab-btn" data-tab="grafici">Grafici</button>
+      <button class="tab-btn" data-tab="bilancio">Bilancio</button>
+    </nav>
+
+    <main class="content">
+
+      <!-- TAB: AGGIUNGI -->
+      <section id="tab-aggiungi" class="tab-panel active">
+        <form id="expense-form" class="card form-card">
+          <h2 id="form-title">Nuova spesa</h2>
+
+          <div class="field">
+            <label for="f-data">Data</label>
+            <input type="date" id="f-data" required />
+          </div>
+
+          <div class="field">
+            <label for="f-nome">Nome spesa</label>
+            <input type="text" id="f-nome" placeholder="Es. Spesa Esselunga" required />
+          </div>
+
+          <div class="field">
+            <label>Categorie <span class="hint">(puoi selezionarne più di una)</span></label>
+            <div id="f-categorie" class="chip-group"></div>
+          </div>
+
+          <div class="field">
+            <label for="f-importo">Importo totale (€)</label>
+            <input type="number" id="f-importo" step="0.01" min="0" placeholder="0.00" required />
+          </div>
+
+          <div class="field">
+            <label>Chi ha pagato</label>
+            <div class="payer-toggle" id="f-pagato-da"></div>
+          </div>
+
+          <div class="field">
+            <label>Ripartizione spesa</label>
+            <div class="split-row">
+              <div class="split-label" id="split-label-1">—</div>
+              <input type="range" id="f-perc1" min="0" max="100" value="50" step="5" />
+              <div class="split-label" id="split-label-2">—</div>
+            </div>
+            <div class="split-values">
+              <span id="split-amount-1">€0.00</span>
+              <span id="split-amount-2">€0.00</span>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="cancel-edit-btn" class="btn-ghost" hidden>Annulla modifica</button>
+            <button type="submit" id="submit-btn" class="btn-primary">Salva spesa</button>
+          </div>
+          <p id="form-message" class="form-message" hidden></p>
+        </form>
+      </section>
+
+      <!-- TAB: ELENCO -->
+      <section id="tab-elenco" class="tab-panel">
+        <div class="card">
+          <div class="list-filters">
+            <select id="filter-categoria">
+              <option value="">Tutte le categorie</option>
+            </select>
+            <select id="filter-pagatoDa">
+              <option value="">Chiunque abbia pagato</option>
+            </select>
+          </div>
+          <div id="expense-list" class="expense-list">
+            <p class="empty-state">Caricamento spese…</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: GRAFICI -->
+      <section id="tab-grafici" class="tab-panel">
+        <div class="card">
+          <div class="chart-controls">
+            <div class="field-inline">
+              <label for="chart-periodo">Periodo</label>
+              <select id="chart-periodo">
+                <option value="settimana">Questa settimana</option>
+                <option value="mese" selected>Questo mese</option>
+                <option value="personalizzato">Intervallo personalizzato</option>
+              </select>
+            </div>
+            <div class="field-inline custom-range" id="custom-range" hidden>
+              <label for="chart-da">Dal</label>
+              <input type="date" id="chart-da" />
+              <label for="chart-a">Al</label>
+              <input type="date" id="chart-a" />
+            </div>
+            <div class="field-inline">
+              <label for="chart-categoria">Categoria</label>
+              <select id="chart-categoria">
+                <option value="">Totale generale</option>
+              </select>
+            </div>
+            <div class="field-inline">
+              <label for="chart-tipo">Tipo grafico</label>
+              <select id="chart-tipo">
+                <option value="doughnut">Torta per categoria</option>
+                <option value="bar">Barre per giorno</option>
+                <option value="line">Andamento nel tempo</option>
+                <option value="bar-utenti">Confronto tra i due utenti</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="main-chart"></canvas>
+          </div>
+          <p id="chart-empty" class="empty-state" hidden>Nessuna spesa nel periodo selezionato.</p>
+        </div>
+      </section>
+
+      <!-- TAB: BILANCIO -->
+      <section id="tab-bilancio" class="tab-panel">
+        <div class="card balance-card">
+          <h2>Chi deve cosa a chi</h2>
+          <p class="balance-sub">Calcolato su tutte le spese registrate, in base alle percentuali scelte per ciascuna.</p>
+          <div class="balance-columns">
+            <div class="balance-col">
+              <div class="balance-name" id="bal-name-1">Utente 1</div>
+              <div class="balance-figure">
+                <span class="balance-figure-label">Ha pagato</span>
+                <span id="bal-paid-1">€0.00</span>
+              </div>
+              <div class="balance-figure">
+                <span class="balance-figure-label">Quota di sua competenza</span>
+                <span id="bal-share-1">€0.00</span>
+              </div>
+            </div>
+            <div class="balance-col">
+              <div class="balance-name" id="bal-name-2">Utente 2</div>
+              <div class="balance-figure">
+                <span class="balance-figure-label">Ha pagato</span>
+                <span id="bal-paid-2">€0.00</span>
+              </div>
+              <div class="balance-figure">
+                <span class="balance-figure-label">Quota di sua competenza</span>
+                <span id="bal-share-2">€0.00</span>
+              </div>
+            </div>
+          </div>
+          <div class="balance-result" id="balance-result">
+            <p id="balance-text">—</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
