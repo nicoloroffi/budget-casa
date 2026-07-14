@@ -43,6 +43,9 @@ h1, h2, h3 { margin: 0 0 4px 0; font-weight: 700; letter-spacing: -0.01em; }
   justify-content: center;
   padding: 24px;
 }
+.login-screen[hidden] {
+  display: none;
+}
 .login-card {
   background: var(--card);
   border-radius: var(--radius);
