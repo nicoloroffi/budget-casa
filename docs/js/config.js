@@ -15,8 +15,8 @@ const APP_CONFIG = {
   // I due utenti dell'app. "email" deve corrispondere esattamente
   // all'account Google con cui la persona farà login.
   USERS: [
-    { id: 'utente1', nome: 'Tu', email: 'roffinicolo@gmail.com', colore: '#3D7EAA' },
-    { id: 'utente2', nome: 'La tua compagna', email: 'greta.milino@gmail.com', colore: '#E07B9A' }
+    { id: 'utente1', nome: 'Nicolò', email: 'roffinicolo@gmail.com', colore: '#3D7EAA' },
+    { id: 'utente2', nome: 'Greta', email: 'greta.milino@gmail.com', colore: '#E07B9A' }
   ],
 
   // Categorie di spesa disponibili
