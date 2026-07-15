@@ -110,15 +110,19 @@ function setupLogout() {
 
 function setupTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      $('tab-' + btn.dataset.tab).classList.add('active');
-      if (btn.dataset.tab === 'grafici') renderChart();
-      if (btn.dataset.tab === 'bilancio') renderBalance();
-    });
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
   });
+  const savedTab = localStorage.getItem('activeTab');
+  activateTab(savedTab && $('tab-' + savedTab) ? savedTab : 'aggiungi');
+}
+
+function activateTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  $('tab-' + tab).classList.add('active');
+  localStorage.setItem('activeTab', tab);
+  if (tab === 'grafici') renderChart();
+  if (tab === 'bilancio') renderBalance();
 }
 
 // ===================== API =====================
