@@ -60,7 +60,7 @@
     <div id="gate" class="gate">
       <div class="gate-card">
         <div class="login-mark">€</div>
-        <h1>Casa</h1>
+        <h1>Budget Casa</h1>
         <p class="login-sub">Clicca su "Accedi" in alto a destra per iniziare a gestire le spese di casa.</p>
         <p id="login-error" class="login-error" hidden></p>
       </div>
@@ -231,31 +231,11 @@
         </div>
       </section>
 
-      <!-- TAB: BUDGET -->
-      <section id="tab-budget" class="tab-panel">
-        <div class="card accent-budget">
-          <h2>Budget mensile per categoria</h2>
-          <p class="balance-sub">Imposta un tetto di spesa mensile per categoria. La barra mostra quanto avete speso questo mese rispetto al budget.</p>
-          <div id="budget-list" class="budget-list"></div>
-          <button type="button" id="save-budget-btn" class="btn-primary">Salva budget</button>
-          <p id="budget-message" class="form-message" hidden></p>
-
-          <hr class="divider" />
-
-          <h2>Soglia di avviso saldo</h2>
-          <p class="balance-sub">Se il saldo tra voi due supera questa cifra, l'app mostra un avviso nella scheda Bilancio.</p>
-          <div class="field soglia-field">
-            <input type="number" id="soglia-input" min="0" step="1" placeholder="Es. 100" />
-            <button type="button" id="save-soglia-btn" class="btn-primary">Salva soglia</button>
-          </div>
-        </div>
-      </section>
-
       <!-- TAB: BILANCIO -->
       <section id="tab-bilancio" class="tab-panel">
         <div class="card balance-card accent-bilancio">
-          <h2>Chi è a debito</h2>
-          <p class="balance-sub">Calcolato su tutte le spese registrate e sugli allineamenti già effettuati.</p>
+          <h2>Chi deve cosa a chi</h2>
+          <p class="balance-sub">Calcolato su tutte le spese registrate e sui saldamenti già effettuati.</p>
           <div class="balance-columns">
             <div class="balance-col">
               <div class="balance-name" id="bal-name-1">Utente 1</div>
@@ -310,9 +290,41 @@
             </div>
           </form>
 
-          <h2 class="settlement-history-title">Storico allineamenti</h2>
+          <h2 class="settlement-history-title">Storico saldamenti</h2>
           <div id="settlement-list" class="settlement-list">
-            <p class="empty-state">Nessun allineamento registrato.</p>
+            <p class="empty-state">Nessun saldamento registrato.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: BUDGET -->
+      <section id="tab-budget" class="tab-panel">
+        <div class="card accent-budget">
+          <h2>Categorie</h2>
+          <p class="balance-sub">Aggiungi o elimina le categorie di spesa disponibili in tutta l'app.</p>
+          <div id="category-list" class="category-list"></div>
+          <div class="category-add-row">
+            <input type="text" id="new-cat-name" placeholder="Nome nuova categoria" />
+            <input type="color" id="new-cat-color" value="#4A7B9D" title="Colore categoria" />
+            <button type="button" id="add-category-btn" class="btn-primary">+ Aggiungi</button>
+          </div>
+          <p id="category-message" class="form-message" hidden></p>
+        </div>
+
+        <div class="card accent-budget">
+          <h2>Budget mensile per categoria</h2>
+          <p class="balance-sub">Imposta un tetto di spesa mensile per categoria. La barra mostra quanto avete speso questo mese rispetto al budget.</p>
+          <div id="budget-list" class="budget-list"></div>
+          <button type="button" id="save-budget-btn" class="btn-primary">Salva budget</button>
+          <p id="budget-message" class="form-message" hidden></p>
+
+          <hr class="divider" />
+
+          <h2>Soglia di avviso saldo</h2>
+          <p class="balance-sub">Se il saldo tra voi due supera questa cifra, l'app mostra un avviso nella scheda Bilancio.</p>
+          <div class="field soglia-field">
+            <input type="number" id="soglia-input" min="0" step="1" placeholder="Es. 100" />
+            <button type="button" id="save-soglia-btn" class="btn-primary">Salva soglia</button>
           </div>
         </div>
       </section>
