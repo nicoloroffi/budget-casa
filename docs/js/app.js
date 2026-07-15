@@ -190,6 +190,7 @@ async function apiCall(action, payload) {
 }
 
 async function refreshExpenses() {
+  renderSkeletonList();
   try {
     STATE.expenses = await apiCall('list');
   } catch (err) {
@@ -198,6 +199,24 @@ async function refreshExpenses() {
   }
   renderExpenseList();
   populateFilterOptions();
+}
+
+function renderSkeletonList() {
+  const list = $('expense-list');
+  if (!list) return;
+  let html = '';
+  for (let i = 0; i < 4; i++) {
+    html += `
+      <div class="skeleton-item">
+        <div class="skeleton-block skeleton-avatar"></div>
+        <div class="skeleton-lines">
+          <div class="skeleton-block skeleton-line w-60"></div>
+          <div class="skeleton-block skeleton-line w-40"></div>
+        </div>
+        <div class="skeleton-block skeleton-amount"></div>
+      </div>`;
+  }
+  list.innerHTML = html;
 }
 
 async function refreshBudgetConfig() {
@@ -403,7 +422,8 @@ function editExpense(id) {
 }
 
 async function removeExpense(id) {
-  if (!confirm('Eliminare questa spesa?')) return;
+  const ok = await showConfirmDialog('Eliminare questa spesa? L\'operazione non è reversibile.');
+  if (!ok) return;
   try {
     await apiCall('delete', { id });
     await refreshExpenses();
@@ -496,7 +516,18 @@ function renderExpenseList() {
   $('list-total').textContent = 'Totale: €' + total.toFixed(2) + ' (' + items.length + (items.length === 1 ? ' spesa' : ' spese') + ')';
 
   if (items.length === 0) {
-    list.innerHTML = '<p class="empty-state">Nessuna spesa trovata.</p>';
+    const hasFilters = $('search-input').value.trim() || $('filter-categoria').value || $('filter-pagatoDa').value;
+    list.innerHTML = hasFilters
+      ? `<div class="empty-state-rich">
+           <div class="empty-state-icon">🔍</div>
+           <div class="empty-state-title">Nessun risultato</div>
+           <div class="empty-state-sub">Prova a modificare la ricerca o i filtri attivi.</div>
+         </div>`
+      : `<div class="empty-state-rich">
+           <div class="empty-state-icon">🧾</div>
+           <div class="empty-state-title">Ancora nessuna spesa</div>
+           <div class="empty-state-sub">Aggiungine una dalla scheda "Aggiungi" per iniziare.</div>
+         </div>`;
     return;
   }
 
@@ -913,11 +944,12 @@ function renderBudgetTab() {
     const over = budget > 0 && speso > budget;
 
     const row = document.createElement('div');
-    row.className = 'budget-row';
+    row.className = 'budget-row' + (over ? ' budget-row-over' : '');
     row.innerHTML = `
       <div class="budget-row-top">
         <span class="budget-cat-dot" style="background:${cat.colore}"></span>
         <span class="budget-cat-name">${cat.nome}</span>
+        ${over ? '<span class="budget-over-badge">Superato</span>' : ''}
         <span class="budget-amount ${over ? 'budget-over' : ''}">€${speso.toFixed(2)} ${budget > 0 ? '/ €' + budget.toFixed(2) : ''}</span>
       </div>
       <div class="budget-bar-track">
@@ -1038,7 +1070,8 @@ async function onSubmitSettlement(e) {
 }
 
 async function removeSettlement(id) {
-  if (!confirm('Eliminare questo saldamento?')) return;
+  const ok = await showConfirmDialog('Eliminare questo saldamento?');
+  if (!ok) return;
   try {
     await apiCall('deleteSettlement', { id });
     await refreshSettlements();
@@ -1051,7 +1084,11 @@ async function removeSettlement(id) {
 function renderSettlementList() {
   const list = $('settlement-list');
   if (!STATE.settlements || STATE.settlements.length === 0) {
-    list.innerHTML = '<p class="empty-state">Nessun saldamento registrato.</p>';
+    list.innerHTML = `<div class="empty-state-rich">
+      <div class="empty-state-icon">💶</div>
+      <div class="empty-state-title">Nessun saldamento ancora</div>
+      <div class="empty-state-sub">Quando uno dei due paga l'altro per pareggiare i conti, registralo qui sopra.</div>
+    </div>`;
     return;
   }
   const items = [...STATE.settlements].sort((a, b) => dateOnly(a.Data) < dateOnly(b.Data) ? 1 : -1);
@@ -1132,6 +1169,33 @@ function renderBalance() {
   } else {
     alertEl.hidden = true;
   }
+}
+
+// ===================== DIALOGO DI CONFERMA =====================
+
+function showConfirmDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = $('confirm-overlay');
+    const okBtn = $('confirm-ok-btn');
+    const cancelBtn = $('confirm-cancel-btn');
+    $('confirm-message').textContent = message;
+    overlay.hidden = false;
+
+    function cleanup(result) {
+      overlay.hidden = true;
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlayClick);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+    function onOverlayClick(e) { if (e.target === overlay) cleanup(false); }
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlayClick);
+  });
 }
 
 // ===================== PWA =====================
