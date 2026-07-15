@@ -18,13 +18,16 @@ const GOOGLE_CLIENT_ID = 'INSERISCI_QUI_IL_TUO_CLIENT_ID.apps.googleusercontent.
 
 const SHEET_NAME = 'Spese';
 const CONFIG_SHEET_NAME = 'Config';
+const SETTLEMENTS_SHEET_NAME = 'Saldamenti';
 
 const EXPENSE_HEADERS = [
   'ID', 'Data', 'Nome', 'Categorie', 'PagatoDa',
   'Importo', 'Percentuale1', 'Percentuale2',
   'ImportoUtente1', 'ImportoUtente2',
-  'CreatoIl', 'ModificatoIl', 'ModificatoDa'
+  'CreatoIl', 'ModificatoIl', 'ModificatoDa', 'Note'
 ];
+
+const SETTLEMENT_HEADERS = ['ID', 'Data', 'DaUtente', 'AUtente', 'Importo', 'Nota', 'CreatoIl', 'CreatoDa'];
 
 // ===================== ENTRY POINT =====================
 
@@ -67,8 +70,20 @@ function handleRequest(e) {
       case 'delete':
         data = deleteExpense(body);
         break;
-      case 'config':
-        data = getConfig();
+      case 'getBudget':
+        data = getBudgetConfig();
+        break;
+      case 'setBudget':
+        data = setBudgetConfig(body);
+        break;
+      case 'listSettlements':
+        data = listSettlements();
+        break;
+      case 'addSettlement':
+        data = addSettlement(body, email);
+        break;
+      case 'deleteSettlement':
+        data = deleteSettlement(body);
         break;
       default:
         responseBody = { error: 'Azione non valida: ' + action };
@@ -101,25 +116,35 @@ function verifyToken(idToken) {
   }
 }
 
-// ===================== ACCESSO AL FOGLIO =====================
+// ===================== ACCESSO AI FOGLI =====================
 
-function getSheet_() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
-  if (!sheet) throw new Error('Foglio "' + SHEET_NAME + '" non trovato');
+function getOrCreateSheet_(name, headers) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+  }
+  if (sheet.getLastRow() === 0 && headers) {
+    sheet.appendRow(headers);
+  }
   return sheet;
 }
 
-function ensureHeaders_() {
-  const sheet = getSheet_();
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(EXPENSE_HEADERS);
-  }
+function getSheet_() {
+  return getOrCreateSheet_(SHEET_NAME, EXPENSE_HEADERS);
+}
+
+function getSettlementsSheet_() {
+  return getOrCreateSheet_(SETTLEMENTS_SHEET_NAME, SETTLEMENT_HEADERS);
+}
+
+function getConfigSheet_() {
+  return getOrCreateSheet_(CONFIG_SHEET_NAME, ['Chiave', 'Valore']);
 }
 
 // ===================== OPERAZIONI SPESE =====================
 
 function listExpenses() {
-  ensureHeaders_();
   const sheet = getSheet_();
   const values = sheet.getDataRange().getValues();
   const headers = values.shift();
@@ -134,6 +159,8 @@ function rowToObject_(headers, row) {
     let val = row[i];
     if (val instanceof Date) {
       val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } else if (h === 'Data' && typeof val === 'string' && val.indexOf('T') !== -1) {
+      val = val.slice(0, 10);
     }
     obj[h] = val;
   });
@@ -141,7 +168,6 @@ function rowToObject_(headers, row) {
 }
 
 function addExpense(body, email) {
-  ensureHeaders_();
   const sheet = getSheet_();
   const id = Utilities.getUuid();
   const now = new Date();
@@ -162,7 +188,8 @@ function addExpense(body, email) {
     round2_(importo * perc2 / 100),
     now,
     now,
-    email
+    email,
+    body.note || ''
   ]);
   return { id: id };
 }
@@ -194,7 +221,8 @@ function updateExpense(body, email) {
         round2_(importo * perc2 / 100),
         values[i][creatoIlCol],
         new Date(),
-        email
+        email,
+        body.note || ''
       ]]);
       return { updated: true };
     }
@@ -215,17 +243,87 @@ function deleteExpense(body) {
   throw new Error('Spesa non trovata');
 }
 
-// ===================== CONFIGURAZIONE =====================
+// ===================== BUDGET & SOGLIA (nel foglio Config) =====================
 
-function getConfig() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG_SHEET_NAME);
-  if (!sheet) return {};
+function getBudgetConfig() {
+  const sheet = getConfigSheet_();
   const values = sheet.getDataRange().getValues();
-  const config = {};
+  const config = { budget: {}, sogliaAvviso: null };
   values.forEach(function (row) {
-    if (row[0]) config[row[0]] = row[1];
+    const key = row[0];
+    const val = row[1];
+    if (!key) return;
+    if (String(key).indexOf('budget_') === 0) {
+      config.budget[String(key).replace('budget_', '')] = parseFloat(val) || 0;
+    } else if (key === 'sogliaAvviso') {
+      config.sogliaAvviso = parseFloat(val) || 0;
+    }
   });
   return config;
+}
+
+function setBudgetConfig(body) {
+  const sheet = getConfigSheet_();
+  const budget = body.budget || {};
+  Object.keys(budget).forEach(function (catId) {
+    upsertConfigValue_(sheet, 'budget_' + catId, budget[catId]);
+  });
+  if (body.sogliaAvviso !== undefined && body.sogliaAvviso !== null) {
+    upsertConfigValue_(sheet, 'sogliaAvviso', body.sogliaAvviso);
+  }
+  return { saved: true };
+}
+
+function upsertConfigValue_(sheet, key, value) {
+  const values = sheet.getDataRange().getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (values[i][0] === key) {
+      sheet.getRange(i + 1, 2).setValue(value);
+      return;
+    }
+  }
+  sheet.appendRow([key, value]);
+}
+
+// ===================== SALDAMENTI =====================
+
+function listSettlements() {
+  const sheet = getSettlementsSheet_();
+  const values = sheet.getDataRange().getValues();
+  const headers = values.shift();
+  return values
+    .filter(function (row) { return row[0]; })
+    .map(function (row) { return rowToObject_(headers, row); });
+}
+
+function addSettlement(body, email) {
+  const sheet = getSettlementsSheet_();
+  const id = Utilities.getUuid();
+  const now = new Date();
+  sheet.appendRow([
+    id,
+    body.data,
+    body.daUtente,
+    body.aUtente,
+    parseFloat(body.importo),
+    body.nota || '',
+    now,
+    email
+  ]);
+  return { id: id };
+}
+
+function deleteSettlement(body) {
+  const sheet = getSettlementsSheet_();
+  const values = sheet.getDataRange().getValues();
+  const idCol = values[0].indexOf('ID');
+  for (let i = 1; i < values.length; i++) {
+    if (values[i][idCol] === body.id) {
+      sheet.deleteRow(i + 1);
+      return { deleted: true };
+    }
+  }
+  throw new Error('Saldamento non trovato');
 }
 
 // ===================== HELPERS =====================
