@@ -1,4 +1,4 @@
-const CACHE_NAME = 'budget-casa-v6';
+const CACHE_NAME = 'budget-casa-offline';
 const ASSETS = [
   './',
   './index.html',
@@ -28,9 +28,15 @@ self.addEventListener('fetch', (event) => {
   // Le chiamate all'API di Google Apps Script vanno sempre in rete
   if (event.request.url.includes('script.google.com')) return;
 
+  // Strategia "network-first": prova sempre a scaricare la versione
+  // più recente. Solo se non c'è connessione, usa quella salvata.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).catch(() => cached);
-    })
+    fetch(event.request)
+      .then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
