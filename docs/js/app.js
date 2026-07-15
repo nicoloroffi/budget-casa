@@ -1086,7 +1086,7 @@ function renderSettlementList() {
   if (!STATE.settlements || STATE.settlements.length === 0) {
     list.innerHTML = `<div class="empty-state-rich">
       <div class="empty-state-icon">💶</div>
-      <div class="empty-state-title">Nessun saldamento ancora</div>
+      <div class="empty-state-title">Nessun allineamento ancora</div>
       <div class="empty-state-sub">Quando uno dei due paga l'altro per pareggiare i conti, registralo qui sopra.</div>
     </div>`;
     return;
