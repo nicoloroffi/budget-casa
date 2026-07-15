@@ -6,7 +6,7 @@
  */
 
 const APP_CONFIG = {
-  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyKdjZKDLPYgoEa8ueiyVL5ShooPJSAIAIPmKB5O7iWmHnA_Ykr3_Z0mlrg3K_y4TXOEA/exec',
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxz3m0PokMC_C-65FeH9PHsrU98Os0CxDkLdq6MX88r7XLC-tIBuZIaW9Ukj51S4UkIZA/exec',
   GOOGLE_CLIENT_ID: '972317357128-d28ns4cgat4jbhrno3qp8tlkfsg5mk9k.apps.googleusercontent.com',
 
   USERS: [
