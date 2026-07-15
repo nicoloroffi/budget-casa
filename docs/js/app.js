@@ -95,6 +95,7 @@ async function enterApp() {
   setupFilters();
   setupChartControls();
   setupLogout();
+  setupFooter();
 
   await refreshExpenses();
 }
@@ -102,6 +103,26 @@ async function enterApp() {
 function setupLogout() {
   $('logout-btn').addEventListener('click', () => {
     sessionStorage.clear();
+    location.reload();
+  });
+}
+
+function setupFooter() {
+  const btn = $('refresh-cache-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Aggiornamento…';
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch (e) {}
     location.reload();
   });
 }
