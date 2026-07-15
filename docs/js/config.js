@@ -1,5 +1,8 @@
 /**
  * CONFIGURAZIONE BUDGET CASA
+ * --------------------------
+ * Questo è l'UNICO file che devi modificare per collegare l'app
+ * al tuo Google Sheet e al tuo login Google.
  */
 
 const APP_CONFIG = {
