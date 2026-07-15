@@ -7,12 +7,14 @@ let STATE = {
   currentUserEmail: null,
   expenses: [],
   settlements: [],
+  categories: [],
   budgetConfig: { budget: {}, sogliaAvviso: 0 },
   editingId: null,
   chart: null
 };
 
 const $ = (id) => document.getElementById(id);
+const CATS = () => STATE.categories;
 
 // ===================== AVVIO =====================
 
@@ -109,8 +111,11 @@ async function enterApp() {
   $('user-avatar').textContent = nome.charAt(0).toUpperCase();
   $('user-avatar').style.background = user ? user.colore : '#999';
 
+  await refreshCategories();
+
   setupTabs();
   setupCategoryChips();
+  setupCategoryManagement();
   setupPayerToggle();
   setupSplitSlider();
   setupForm();
@@ -189,6 +194,16 @@ async function apiCall(action, payload) {
   return json.data;
 }
 
+async function refreshCategories() {
+  try {
+    const data = await apiCall('getCategories');
+    STATE.categories = (data && data.length) ? data : [];
+  } catch (err) {
+    STATE.categories = [];
+    console.error(err);
+  }
+}
+
 async function refreshExpenses() {
   renderSkeletonList();
   try {
@@ -240,10 +255,93 @@ async function refreshSettlements() {
 
 // ===================== FORM: CATEGORIE / PAGATO DA =====================
 
+function setupCategoryManagement() {
+  renderCategoryList();
+  $('add-category-btn').addEventListener('click', onAddCategory);
+  $('new-cat-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); onAddCategory(); }
+  });
+}
+
+function renderCategoryList() {
+  const container = $('category-list');
+  if (!container) return;
+  if (CATS().length === 0) {
+    container.innerHTML = '<p class="empty-state">Nessuna categoria ancora. Aggiungine una qui sotto.</p>';
+    return;
+  }
+  container.innerHTML = '';
+  CATS().forEach(cat => {
+    const chip = document.createElement('div');
+    chip.className = 'category-chip';
+    chip.style.background = cat.colore;
+    chip.innerHTML = `<span>${escapeHtml(cat.nome)}</span><button type="button" class="category-chip-remove" title="Elimina categoria">✕</button>`;
+    chip.querySelector('.category-chip-remove').addEventListener('click', () => onDeleteCategory(cat));
+    container.appendChild(chip);
+  });
+}
+
+async function onAddCategory() {
+  const nameInput = $('new-cat-name');
+  const colorInput = $('new-cat-color');
+  const nome = nameInput.value.trim();
+  const msg = $('category-message');
+
+  if (!nome) {
+    msg.textContent = 'Inserisci un nome per la categoria.';
+    msg.className = 'form-message error';
+    msg.hidden = false;
+    return;
+  }
+  if (CATS().some(c => c.nome.toLowerCase() === nome.toLowerCase())) {
+    msg.textContent = 'Esiste già una categoria con questo nome.';
+    msg.className = 'form-message error';
+    msg.hidden = false;
+    return;
+  }
+
+  try {
+    const result = await apiCall('addCategory', { nome, colore: colorInput.value });
+    STATE.categories.push({ id: result.id, nome, colore: colorInput.value });
+    nameInput.value = '';
+    renderCategoryList();
+    setupCategoryChips();
+    populateFilterOptions();
+    renderBudgetTab();
+    msg.textContent = 'Categoria aggiunta.';
+    msg.className = 'form-message success';
+    msg.hidden = false;
+  } catch (err) {
+    msg.textContent = 'Errore: ' + err.message;
+    msg.className = 'form-message error';
+    msg.hidden = false;
+  }
+}
+
+async function onDeleteCategory(cat) {
+  const inUse = STATE.expenses.some(exp => (exp.Categorie || '').split(',').map(s => s.trim()).includes(cat.id));
+  const warning = inUse
+    ? `La categoria "${cat.nome}" è usata in almeno una spesa esistente. Le spese non verranno eliminate, ma perderanno l'etichetta colorata per questa categoria. Continuare?`
+    : `Eliminare la categoria "${cat.nome}"?`;
+  const ok = await showConfirmDialog(warning);
+  if (!ok) return;
+
+  try {
+    await apiCall('deleteCategory', { id: cat.id });
+    STATE.categories = STATE.categories.filter(c => c.id !== cat.id);
+    renderCategoryList();
+    setupCategoryChips();
+    populateFilterOptions();
+    renderBudgetTab();
+  } catch (err) {
+    alert('Errore: ' + err.message);
+  }
+}
+
 function setupCategoryChips() {
   const container = $('f-categorie');
   container.innerHTML = '';
-  APP_CONFIG.CATEGORIES.forEach(cat => {
+  CATS().forEach(cat => {
     const chip = document.createElement('div');
     chip.className = 'chip';
     chip.textContent = cat.nome;
@@ -393,12 +491,12 @@ function editExpense(id) {
   $('f-note').value = exp.Note || '';
 
   const categorieIds = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean)
-    .map(nome => (APP_CONFIG.CATEGORIES.find(c => c.nome === nome || c.id === nome) || {}).id)
+    .map(nome => (CATS().find(c => c.nome === nome || c.id === nome) || {}).id)
     .filter(Boolean);
   document.querySelectorAll('#f-categorie .chip').forEach(chip => {
     const selected = categorieIds.includes(chip.dataset.id);
     chip.classList.toggle('selected', selected);
-    const cat = APP_CONFIG.CATEGORIES.find(c => c.id === chip.dataset.id);
+    const cat = CATS().find(c => c.id === chip.dataset.id);
     chip.style.background = selected ? cat.colore : '';
     chip.style.borderColor = selected ? cat.colore : '';
   });
@@ -457,7 +555,7 @@ function populateFilterOptions() {
   const currentCatVal = catSelect.value;
   catSelect.innerHTML = '<option value="">Tutte le categorie</option>';
   chartCatSelect.innerHTML = '<option value="">Totale generale</option>';
-  APP_CONFIG.CATEGORIES.forEach(cat => {
+  CATS().forEach(cat => {
     const o1 = document.createElement('option'); o1.value = cat.id; o1.textContent = cat.nome;
     catSelect.appendChild(o1);
     const o2 = document.createElement('option'); o2.value = cat.id; o2.textContent = cat.nome;
@@ -534,7 +632,7 @@ function renderExpenseList() {
   items.forEach(exp => {
     const payer = APP_CONFIG.USERS.find(u => u.id === exp.PagatoDa);
     const tags = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean).map(catId => {
-      const cat = APP_CONFIG.CATEGORIES.find(c => c.id === catId) || { colore: '#999', nome: catId };
+      const cat = CATS().find(c => c.id === catId) || { colore: '#999', nome: catId };
       return `<span class="tag" style="background:${cat.colore}">${cat.nome}</span>`;
     }).join('');
     const noteHtml = exp.Note ? `<div class="expense-note">📝 ${escapeHtml(exp.Note)}</div>` : '';
@@ -636,7 +734,7 @@ function exportPdf() {
     }
     const payer = APP_CONFIG.USERS.find(u => u.id === exp.PagatoDa);
     const catNames = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean)
-      .map(catId => (APP_CONFIG.CATEGORIES.find(c => c.id === catId) || {}).nome || catId)
+      .map(catId => (CATS().find(c => c.id === catId) || {}).nome || catId)
       .join(', ');
     doc.text(formatDateIt(exp.Data), 16, y);
     doc.text(truncateText(exp.Nome, 32), 40, y);
@@ -756,16 +854,16 @@ function renderChart() {
 
 function buildDoughnutConfig(items) {
   const totals = {};
-  APP_CONFIG.CATEGORIES.forEach(c => totals[c.id] = 0);
+  CATS().forEach(c => totals[c.id] = 0);
   items.forEach(exp => {
     const cats = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean);
     const share = Number(exp.Importo) / (cats.length || 1);
     cats.forEach(catId => { if (totals[catId] !== undefined) totals[catId] += share; });
   });
   const catIds = Object.keys(totals).filter(k => totals[k] > 0);
-  const labels = catIds.map(id => (APP_CONFIG.CATEGORIES.find(c => c.id === id) || {}).nome || id);
+  const labels = catIds.map(id => (CATS().find(c => c.id === id) || {}).nome || id);
   const data = catIds.map(id => Math.round(totals[id] * 100) / 100);
-  const colors = catIds.map(id => (APP_CONFIG.CATEGORIES.find(c => c.id === id) || {}).colore || '#999');
+  const colors = catIds.map(id => (CATS().find(c => c.id === id) || {}).colore || '#999');
   return {
     type: 'doughnut',
     data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
@@ -822,7 +920,7 @@ function renderMonthComparisonChart() {
   const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
   const curTotals = {}, prevTotals = {};
-  APP_CONFIG.CATEGORIES.forEach(c => { curTotals[c.id] = 0; prevTotals[c.id] = 0; });
+  CATS().forEach(c => { curTotals[c.id] = 0; prevTotals[c.id] = 0; });
 
   STATE.expenses.forEach(exp => {
     const d = new Date(dateOnly(exp.Data));
@@ -835,9 +933,9 @@ function renderMonthComparisonChart() {
     }
   });
 
-  const labels = APP_CONFIG.CATEGORIES.map(c => c.nome);
-  const dataCur = APP_CONFIG.CATEGORIES.map(c => Math.round(curTotals[c.id] * 100) / 100);
-  const dataPrev = APP_CONFIG.CATEGORIES.map(c => Math.round(prevTotals[c.id] * 100) / 100);
+  const labels = CATS().map(c => c.nome);
+  const dataCur = CATS().map(c => Math.round(curTotals[c.id] * 100) / 100);
+  const dataPrev = CATS().map(c => Math.round(prevTotals[c.id] * 100) / 100);
 
   const hasData = dataCur.some(v => v > 0) || dataPrev.some(v => v > 0);
   $('chart-empty').hidden = hasData;
@@ -868,7 +966,7 @@ function renderCategoryAverageChart() {
   const start = new Date(now.getFullYear(), now.getMonth() - monthsBack + 1, 1);
 
   const totals = {};
-  APP_CONFIG.CATEGORIES.forEach(c => totals[c.id] = 0);
+  CATS().forEach(c => totals[c.id] = 0);
 
   STATE.expenses.forEach(exp => {
     const d = new Date(dateOnly(exp.Data));
@@ -878,9 +976,9 @@ function renderCategoryAverageChart() {
     cats.forEach(catId => { if (totals[catId] !== undefined) totals[catId] += share; });
   });
 
-  const labels = APP_CONFIG.CATEGORIES.map(c => c.nome);
-  const data = APP_CONFIG.CATEGORIES.map(c => Math.round((totals[c.id] / monthsBack) * 100) / 100);
-  const colors = APP_CONFIG.CATEGORIES.map(c => c.colore);
+  const labels = CATS().map(c => c.nome);
+  const data = CATS().map(c => Math.round((totals[c.id] / monthsBack) * 100) / 100);
+  const colors = CATS().map(c => c.colore);
 
   const hasData = data.some(v => v > 0);
   $('chart-empty').hidden = hasData;
@@ -930,7 +1028,7 @@ function renderBudgetTab() {
   const curStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const speseMese = {};
-  APP_CONFIG.CATEGORIES.forEach(c => speseMese[c.id] = 0);
+  CATS().forEach(c => speseMese[c.id] = 0);
   STATE.expenses.forEach(exp => {
     const d = new Date(dateOnly(exp.Data));
     if (d < curStart || d > now) return;
@@ -939,7 +1037,7 @@ function renderBudgetTab() {
     cats.forEach(catId => { if (speseMese[catId] !== undefined) speseMese[catId] += share; });
   });
 
-  APP_CONFIG.CATEGORIES.forEach(cat => {
+  CATS().forEach(cat => {
     const budget = (STATE.budgetConfig.budget && STATE.budgetConfig.budget[cat.id]) || 0;
     const speso = speseMese[cat.id] || 0;
     const pct = budget > 0 ? Math.min(100, Math.round((speso / budget) * 100)) : 0;
