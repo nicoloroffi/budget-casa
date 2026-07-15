@@ -10,7 +10,7 @@
  */
 
 const ALLOWED_EMAILS = [
-  'rofffinicolo@gmail.com',        // <-- Utente 1
+  'roffinicolo@gmail.com',        // <-- Utente 1
   'greta.milino@gmail.com'    // <-- Utente 2
 ];
 
