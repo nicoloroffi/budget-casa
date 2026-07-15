@@ -8,6 +8,9 @@
       if (sessionStorage.getItem('idToken') && sessionStorage.getItem('userEmail')) {
         document.documentElement.classList.add('authed-preload');
       }
+      if (localStorage.getItem('theme') === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
     } catch (e) {}
   })();
 </script>
@@ -18,12 +21,13 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="apple-mobile-web-app-title" content="Budget Casa" />
+<meta name="apple-mobile-web-app-title" content="Gestione Spese" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -36,6 +40,8 @@
       </div>
 
       <div class="user-box">
+        <button id="theme-toggle-btn" class="icon-toggle-btn" type="button" title="Cambia tema">🌙</button>
+
         <div id="logged-out-box" class="account-btn-wrap">
           <button id="account-btn" class="account-btn" type="button">
             Accedi
@@ -64,6 +70,7 @@
       <button class="tab-btn active" data-tab="aggiungi"><span class="tab-icon">➕</span> Aggiungi</button>
       <button class="tab-btn" data-tab="elenco"><span class="tab-icon">📋</span> Elenco</button>
       <button class="tab-btn" data-tab="grafici"><span class="tab-icon">📈</span> Grafici</button>
+      <button class="tab-btn" data-tab="budget"><span class="tab-icon">🎯</span> Budget</button>
       <button class="tab-btn" data-tab="bilancio"><span class="tab-icon">⚖️</span> Bilancio</button>
     </nav>
 
@@ -112,6 +119,11 @@
             </div>
           </div>
 
+          <div class="field">
+            <label for="f-note">Note <span class="hint">(facoltativo)</span></label>
+            <textarea id="f-note" rows="2" placeholder="Es. offerto da..., rimborso previsto, ecc."></textarea>
+          </div>
+
           <div class="form-actions">
             <button type="button" id="cancel-edit-btn" class="btn-ghost" hidden>Annulla modifica</button>
             <button type="submit" id="submit-btn" class="btn-primary">Salva spesa</button>
@@ -124,16 +136,44 @@
       <section id="tab-elenco" class="tab-panel">
         <div class="card accent-elenco">
           <div class="list-filters">
+            <input type="text" id="search-input" placeholder="🔍 Cerca per nome o nota…" class="search-input" />
+          </div>
+          <div class="list-filters">
             <select id="filter-categoria">
               <option value="">Tutte le categorie</option>
             </select>
             <select id="filter-pagatoDa">
               <option value="">Chiunque abbia pagato</option>
             </select>
+            <select id="sort-select">
+              <option value="data-desc">Data: più recenti</option>
+              <option value="data-asc">Data: più vecchie</option>
+              <option value="importo-desc">Importo: più alto</option>
+              <option value="importo-asc">Importo: più basso</option>
+            </select>
           </div>
+
+          <div class="list-total" id="list-total">Totale: €0.00</div>
+
           <div id="expense-list" class="expense-list">
             <p class="empty-state">Caricamento spese…</p>
           </div>
+
+          <details class="export-box">
+            <summary>Esporta PDF con filtri personalizzati</summary>
+            <div class="export-fields">
+              <div class="field-inline">
+                <label for="export-da">Dal</label>
+                <input type="date" id="export-da" />
+              </div>
+              <div class="field-inline">
+                <label for="export-a">Al</label>
+                <input type="date" id="export-a" />
+              </div>
+              <p class="hint">Verranno usati anche i filtri di categoria, pagante e ricerca già impostati sopra.</p>
+              <button type="button" id="export-pdf-btn" class="btn-primary">📄 Esporta PDF</button>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -141,7 +181,7 @@
       <section id="tab-grafici" class="tab-panel">
         <div class="card accent-grafici">
           <div class="chart-controls">
-            <div class="field-inline">
+            <div class="field-inline" id="periodo-wrap">
               <label for="chart-periodo">Periodo</label>
               <select id="chart-periodo">
                 <option value="settimana">Questa settimana</option>
@@ -155,10 +195,18 @@
               <label for="chart-a">Al</label>
               <input type="date" id="chart-a" />
             </div>
-            <div class="field-inline">
+            <div class="field-inline" id="categoria-wrap">
               <label for="chart-categoria">Categoria</label>
               <select id="chart-categoria">
                 <option value="">Totale generale</option>
+              </select>
+            </div>
+            <div class="field-inline" id="mesi-indietro-wrap" hidden>
+              <label for="chart-mesi">Ultimi</label>
+              <select id="chart-mesi">
+                <option value="3">3 mesi</option>
+                <option value="6">6 mesi</option>
+                <option value="12">12 mesi</option>
               </select>
             </div>
             <div class="field-inline">
@@ -168,6 +216,8 @@
                 <option value="bar">Barre per giorno</option>
                 <option value="line">Andamento nel tempo</option>
                 <option value="bar-utenti">Confronto tra i due utenti</option>
+                <option value="confronto-mesi">Confronto mese su mese</option>
+                <option value="media-categorie">Media per categoria</option>
               </select>
             </div>
           </div>
@@ -178,11 +228,31 @@
         </div>
       </section>
 
+      <!-- TAB: BUDGET -->
+      <section id="tab-budget" class="tab-panel">
+        <div class="card accent-budget">
+          <h2>Budget mensile per categoria</h2>
+          <p class="balance-sub">Imposta un tetto di spesa mensile per categoria. La barra mostra quanto avete speso questo mese rispetto al budget.</p>
+          <div id="budget-list" class="budget-list"></div>
+          <button type="button" id="save-budget-btn" class="btn-primary">Salva budget</button>
+          <p id="budget-message" class="form-message" hidden></p>
+
+          <hr class="divider" />
+
+          <h2>Soglia di avviso saldo</h2>
+          <p class="balance-sub">Se il saldo tra voi due supera questa cifra, l'app mostra un avviso nella scheda Bilancio.</p>
+          <div class="field soglia-field">
+            <input type="number" id="soglia-input" min="0" step="1" placeholder="Es. 100" />
+            <button type="button" id="save-soglia-btn" class="btn-primary">Salva soglia</button>
+          </div>
+        </div>
+      </section>
+
       <!-- TAB: BILANCIO -->
       <section id="tab-bilancio" class="tab-panel">
         <div class="card balance-card accent-bilancio">
           <h2>Chi deve cosa a chi</h2>
-          <p class="balance-sub">Calcolato su tutte le spese registrate, in base alle percentuali scelte per ciascuna.</p>
+          <p class="balance-sub">Calcolato su tutte le spese registrate e sui saldamenti già effettuati.</p>
           <div class="balance-columns">
             <div class="balance-col">
               <div class="balance-name" id="bal-name-1">Utente 1</div>
@@ -210,9 +280,48 @@
           <div class="balance-result" id="balance-result">
             <p id="balance-text">—</p>
           </div>
+          <p id="soglia-alert" class="soglia-alert" hidden></p>
+
+          <button type="button" id="open-settlement-btn" class="btn-primary settlement-toggle-btn">💶 Registra un saldo</button>
+
+          <form id="settlement-form" class="settlement-form" hidden>
+            <div class="field">
+              <label for="s-da">Chi paga</label>
+              <div class="payer-toggle" id="s-da"></div>
+            </div>
+            <div class="field">
+              <label for="s-importo">Importo (€)</label>
+              <input type="number" id="s-importo" step="0.01" min="0" />
+            </div>
+            <div class="field">
+              <label for="s-data">Data</label>
+              <input type="date" id="s-data" />
+            </div>
+            <div class="field">
+              <label for="s-nota">Nota <span class="hint">(facoltativo)</span></label>
+              <input type="text" id="s-nota" placeholder="Es. Bonifico di giugno" />
+            </div>
+            <div class="form-actions">
+              <button type="button" id="cancel-settlement-btn" class="btn-ghost">Annulla</button>
+              <button type="submit" class="btn-primary">Registra</button>
+            </div>
+          </form>
+
+          <h2 class="settlement-history-title">Storico saldamenti</h2>
+          <div id="settlement-list" class="settlement-list">
+            <p class="empty-state">Nessun saldamento registrato.</p>
+          </div>
         </div>
       </section>
 
-    </main> <footer class="app-footer"> <button id="refresh-cache-btn" class="footer-btn" type="button">↻ Aggiorna app</button> </footer> </div> <script src="js/config.js"></script> <script src="js/app.js"></script>
+    </main>
+
+    <footer class="app-footer">
+      <button id="refresh-cache-btn" class="footer-btn" type="button">↻ Aggiorna app</button>
+    </footer>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
