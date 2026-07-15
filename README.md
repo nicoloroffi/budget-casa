@@ -1,6 +1,6 @@
 # Budget Casa
 
-App web per gestire le spese di casa in due, con Google Sheet come database,
+App web per gestire le spese di casa, con Google Sheet come database,
 login Google e grafici personalizzabili. Gratis, sempre online, installabile
 come app su iPhone e Mac.
 
