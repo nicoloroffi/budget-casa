@@ -3,6 +3,10 @@
  * --------------------------
  * Questo è l'UNICO file che devi modificare per collegare l'app
  * al tuo Google Sheet e al tuo login Google.
+ *
+ * Le categorie di spesa NON sono più qui: si gestiscono direttamente
+ * dentro l'app, nella scheda "Budget" (sezione "Categorie"), e sono
+ * salvate nel foglio "Categorie" del tuo Google Sheet.
  */
 
 const APP_CONFIG = {
@@ -12,15 +16,5 @@ const APP_CONFIG = {
   USERS: [
     { id: 'utente1', nome: 'Nicolò', email: 'roffinicolo@gmail.com', colore: '#3D7EAA' },
     { id: 'utente2', nome: 'Greta', email: 'greta.milino@gmail.com', colore: '#E07B9A' }
-  ],
-
-  CATEGORIES: [
-    { id: 'bollette', nome: 'Bollette', colore: '#4A7B9D' },
-    { id: 'fibra', nome: 'Fibra', colore: '#6FA8A0' },
-    { id: 'alimentare', nome: 'Alimentare', colore: '#8FBF6E' },
-    { id: 'ristorante', nome: 'Ristorante', colore: '#E0A458' },
-    { id: 'casa', nome: 'Casa', colore: '#B98BC9' },
-    { id: 'shopping', nome: 'Shopping', colore: '#E07B9A' },
-    { id: 'viaggi', nome: 'Viaggi', colore: '#5C6BC0' }
   ]
 };
