@@ -362,13 +362,19 @@ h1, h2, h3 { margin: 0 0 4px 0; font-weight: 700; letter-spacing: -0.01em; }
 .search-input { width: 100%; }
 .list-filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .list-filters select, .list-filters input {
-  padding: 10px 12px;
+  padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--text);
   flex: 1;
   min-width: 140px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.list-filters select:focus, .list-filters input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 .list-total {
@@ -538,11 +544,17 @@ h1, h2, h3 { margin: 0 0 4px 0; font-weight: 700; letter-spacing: -0.01em; }
 .field-inline { display: flex; flex-direction: column; gap: 4px; }
 .field-inline label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .field-inline select, .field-inline input {
-  padding: 9px 10px;
+  padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--text);
+  transition: border-color .15s, box-shadow .15s;
+}
+.field-inline select:focus, .field-inline input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 .custom-range { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 8px; }
 .custom-range label { white-space: nowrap; }
