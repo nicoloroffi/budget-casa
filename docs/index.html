@@ -15,13 +15,13 @@
   })();
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Gestione Spese</title>
+<title>Budget Casa</title>
 <meta name="theme-color" content="#1F6F63" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="apple-mobile-web-app-title" content="Gestione Spese" />
+<meta name="apple-mobile-web-app-title" content="Budget Casa" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
@@ -36,7 +36,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark">€</span>
-        <span class="brand-name">Gestione Spese</span>
+        <span class="brand-name">Budget Casa</span>
       </div>
 
       <div class="user-box">
@@ -44,7 +44,7 @@
 
         <div id="logged-out-box" class="account-btn-wrap">
           <button id="account-btn" class="account-btn" type="button">
-            Accedi
+            <span class="g-dot">G</span> Accedi
           </button>
           <div id="google-signin-hidden" class="google-signin-hidden"></div>
         </div>
@@ -60,7 +60,7 @@
     <div id="gate" class="gate">
       <div class="gate-card">
         <div class="login-mark">€</div>
-        <h1>Gestione Spese</h1>
+        <h1>Budget Casa</h1>
         <p class="login-sub">Clicca su "Accedi" in alto a destra per iniziare a gestire le spese di casa.</p>
         <p id="login-error" class="login-error" hidden></p>
       </div>
@@ -121,7 +121,10 @@
 
           <div class="field">
             <label for="f-note">Note <span class="hint">(facoltativo)</span></label>
-            <textarea id="f-note" rows="2" placeholder="Es. offerto da..., rimborso previsto, ecc."></textarea>
+            <div class="note-field-wrap">
+              <span class="note-field-icon">📝</span>
+              <textarea id="f-note" rows="2" placeholder="Es. offerto da..., rimborso previsto, ecc."></textarea>
+            </div>
           </div>
 
           <div class="form-actions">
@@ -156,7 +159,7 @@
           <div class="list-total" id="list-total">Totale: €0.00</div>
 
           <div id="expense-list" class="expense-list">
-            <p class="empty-state">Caricamento spese…</p>
+            <p class="empty-state">Nessuna spesa trovata.</p>
           </div>
 
           <details class="export-box">
@@ -319,6 +322,16 @@
     <footer class="app-footer">
       <button id="refresh-cache-btn" class="footer-btn" type="button">↻ Aggiorna app</button>
     </footer>
+  </div>
+
+  <div id="confirm-overlay" class="confirm-overlay" hidden>
+    <div class="confirm-dialog">
+      <p id="confirm-message" class="confirm-message">Sei sicuro?</p>
+      <div class="confirm-actions">
+        <button id="confirm-cancel-btn" class="btn-ghost" type="button">Annulla</button>
+        <button id="confirm-ok-btn" class="btn-danger" type="button">Elimina</button>
+      </div>
+    </div>
   </div>
 
   <script src="js/config.js"></script>
