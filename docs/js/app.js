@@ -1,6 +1,5 @@
 /**
  * BUDGET CASA - Logica applicazione (frontend)
- * Usa APP_CONFIG definito in config.js
  */
 
 let STATE = {
@@ -18,12 +17,11 @@ const $ = (id) => document.getElementById(id);
 window.addEventListener('load', () => {
   const savedToken = sessionStorage.getItem('idToken');
   const savedEmail = sessionStorage.getItem('userEmail');
+  initGoogleSignIn();
   if (savedToken && savedEmail) {
     STATE.idToken = savedToken;
     STATE.currentUserEmail = savedEmail;
     enterApp();
-  } else {
-    initGoogleSignIn();
   }
   registerServiceWorker();
 });
@@ -38,8 +36,8 @@ function initGoogleSignIn() {
     callback: handleCredentialResponse
   });
   google.accounts.id.renderButton(
-    $('google-signin-button'),
-    { theme: 'outline', size: 'large', shape: 'pill', width: 260 }
+    $('google-signin-hidden'),
+    { theme: 'outline', size: 'large', shape: 'pill', width: 130 }
   );
 }
 
@@ -77,11 +75,17 @@ function showLoginError(msg) {
 }
 
 async function enterApp() {
-  $('login-screen').hidden = true;
-  $('app').hidden = false;
+  $('gate').hidden = true;
+  $('tabs').hidden = false;
+  $('main-content').hidden = false;
+  $('logged-out-box').hidden = true;
+  $('logged-in-box').hidden = false;
 
   const user = APP_CONFIG.USERS.find(u => u.email.toLowerCase() === STATE.currentUserEmail.toLowerCase());
-  $('user-label').textContent = user ? user.nome : STATE.currentUserEmail;
+  const nome = user ? user.nome : STATE.currentUserEmail;
+  $('user-label').textContent = nome;
+  $('user-avatar').textContent = nome.charAt(0).toUpperCase();
+  $('user-avatar').style.background = user ? user.colore : '#999';
 
   setupTabs();
   setupCategoryChips();
@@ -191,6 +195,7 @@ function setupSplitSlider() {
   const slider = $('f-perc1');
   slider.addEventListener('input', updateSplitDisplay);
   $('f-importo').addEventListener('input', updateSplitDisplay);
+  $('f-data').value = todayISO();
   updateSplitDisplay();
 }
 
@@ -288,7 +293,7 @@ function editExpense(id) {
   if (!exp) return;
   STATE.editingId = id;
 
-  $('f-data').value = exp.Data;
+  $('f-data').value = dateOnly(exp.Data);
   $('f-nome').value = exp.Nome;
   $('f-importo').value = exp.Importo;
 
@@ -374,7 +379,7 @@ function renderExpenseList() {
   const catFilter = $('filter-categoria').value;
   const payFilter = $('filter-pagatoDa').value;
 
-  let items = [...STATE.expenses].sort((a, b) => (a.Data < b.Data ? 1 : -1));
+  let items = [...STATE.expenses].sort((a, b) => (dateOnly(a.Data) < dateOnly(b.Data) ? 1 : -1));
 
   if (catFilter) {
     const catNome = (APP_CONFIG.CATEGORIES.find(c => c.id === catFilter) || {}).nome;
@@ -400,6 +405,7 @@ function renderExpenseList() {
     const div = document.createElement('div');
     div.className = 'expense-item';
     div.innerHTML = `
+      <div class="expense-payer-badge" style="background:${payer ? payer.colore : '#999'}">${payer ? payer.nome.charAt(0).toUpperCase() : '?'}</div>
       <div class="expense-main">
         <div class="expense-name">${escapeHtml(exp.Nome)}</div>
         <div class="expense-meta">${formatDateIt(exp.Data)} · pagato da ${payer ? payer.nome : exp.PagatoDa} · ${exp.Percentuale1}% / ${exp.Percentuale2}%</div>
@@ -425,9 +431,18 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function formatDateIt(iso) {
+// Normalizza qualsiasi valore data (es. "2026-07-12" o "2026-07-12T07:00:00.000Z")
+// restituendo sempre solo la parte "YYYY-MM-DD".
+function dateOnly(d) {
+  if (!d) return '';
+  return String(d).slice(0, 10);
+}
+
+function formatDateIt(raw) {
+  const iso = dateOnly(raw);
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return String(raw);
   return `${d}/${m}/${y}`;
 }
 
@@ -450,7 +465,7 @@ function getChartDateRange() {
   let start, end;
 
   if (periodo === 'settimana') {
-    const day = (now.getDay() + 6) % 7; // lunedì = 0
+    const day = (now.getDay() + 6) % 7;
     start = new Date(now); start.setDate(now.getDate() - day);
     end = new Date(start); end.setDate(start.getDate() + 6);
   } else if (periodo === 'mese') {
@@ -475,7 +490,10 @@ function renderChart() {
   const catFilter = $('chart-categoria').value;
   const tipo = $('chart-tipo').value;
 
-  let items = STATE.expenses.filter(e => e.Data >= start && e.Data <= end);
+  let items = STATE.expenses.filter(e => {
+    const d = dateOnly(e.Data);
+    return d >= start && d <= end;
+  });
   if (catFilter) {
     const catNome = (APP_CONFIG.CATEGORIES.find(c => c.id === catFilter) || {}).nome;
     items = items.filter(e => (e.Categorie || '').split(',').map(s => s.trim()).includes(catNome));
@@ -522,7 +540,7 @@ function buildDoughnutConfig(items) {
 
 function buildBarByDayConfig(items) {
   const byDay = {};
-  items.forEach(exp => { byDay[exp.Data] = (byDay[exp.Data] || 0) + Number(exp.Importo); });
+  items.forEach(exp => { const d = dateOnly(exp.Data); byDay[d] = (byDay[d] || 0) + Number(exp.Importo); });
   const labels = Object.keys(byDay).sort();
   const data = labels.map(l => Math.round(byDay[l] * 100) / 100);
   return {
@@ -534,7 +552,7 @@ function buildBarByDayConfig(items) {
 
 function buildLineConfig(items) {
   const byDay = {};
-  items.forEach(exp => { byDay[exp.Data] = (byDay[exp.Data] || 0) + Number(exp.Importo); });
+  items.forEach(exp => { const d = dateOnly(exp.Data); byDay[d] = (byDay[d] || 0) + Number(exp.Importo); });
   const labels = Object.keys(byDay).sort();
   let running = 0;
   const data = labels.map(l => { running += byDay[l]; return Math.round(running * 100) / 100; });
@@ -583,7 +601,7 @@ function renderBalance() {
   $('bal-share-1').textContent = '€' + share1.toFixed(2);
   $('bal-share-2').textContent = '€' + share2.toFixed(2);
 
-  const balance1 = paid1 - share1; // positivo = ha anticipato soldi
+  const balance1 = paid1 - share1;
   const resultEl = $('balance-result');
   const textEl = $('balance-text');
 
