@@ -484,8 +484,7 @@ function getFilteredExpenses() {
   let items = [...STATE.expenses];
 
   if (catFilter) {
-    const catNome = (APP_CONFIG.CATEGORIES.find(c => c.id === catFilter) || {}).nome;
-    items = items.filter(e => (e.Categorie || '').split(',').map(s => s.trim()).includes(catNome));
+    items = items.filter(e => (e.Categorie || '').split(',').map(s => s.trim()).includes(catFilter));
   }
   if (payFilter) {
     items = items.filter(e => e.PagatoDa === payFilter);
@@ -534,8 +533,8 @@ function renderExpenseList() {
   list.innerHTML = '';
   items.forEach(exp => {
     const payer = APP_CONFIG.USERS.find(u => u.id === exp.PagatoDa);
-    const tags = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean).map(nome => {
-      const cat = APP_CONFIG.CATEGORIES.find(c => c.nome === nome) || { colore: '#999', nome };
+    const tags = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean).map(catId => {
+      const cat = APP_CONFIG.CATEGORIES.find(c => c.id === catId) || { colore: '#999', nome: catId };
       return `<span class="tag" style="background:${cat.colore}">${cat.nome}</span>`;
     }).join('');
     const noteHtml = exp.Note ? `<div class="expense-note">📝 ${escapeHtml(exp.Note)}</div>` : '';
@@ -636,9 +635,12 @@ function exportPdf() {
       doc.rect(14, y - 5, 182, 7, 'F');
     }
     const payer = APP_CONFIG.USERS.find(u => u.id === exp.PagatoDa);
+    const catNames = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean)
+      .map(catId => (APP_CONFIG.CATEGORIES.find(c => c.id === catId) || {}).nome || catId)
+      .join(', ');
     doc.text(formatDateIt(exp.Data), 16, y);
     doc.text(truncateText(exp.Nome, 32), 40, y);
-    doc.text(truncateText(exp.Categorie || '', 24), 100, y);
+    doc.text(truncateText(catNames, 24), 100, y);
     doc.text(payer ? payer.nome : (exp.PagatoDa || ''), 145, y);
     doc.text('€' + Number(exp.Importo).toFixed(2), 178, y);
     y += 7;
@@ -728,8 +730,7 @@ function renderChart() {
     return d >= start && d <= end;
   });
   if (catFilter) {
-    const catNome = (APP_CONFIG.CATEGORIES.find(c => c.id === catFilter) || {}).nome;
-    items = items.filter(e => (e.Categorie || '').split(',').map(s => s.trim()).includes(catNome));
+    items = items.filter(e => (e.Categorie || '').split(',').map(s => s.trim()).includes(catFilter));
   }
 
   $('chart-empty').hidden = items.length > 0;
@@ -755,15 +756,16 @@ function renderChart() {
 
 function buildDoughnutConfig(items) {
   const totals = {};
-  APP_CONFIG.CATEGORIES.forEach(c => totals[c.nome] = 0);
+  APP_CONFIG.CATEGORIES.forEach(c => totals[c.id] = 0);
   items.forEach(exp => {
     const cats = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean);
     const share = Number(exp.Importo) / (cats.length || 1);
-    cats.forEach(nome => { totals[nome] = (totals[nome] || 0) + share; });
+    cats.forEach(catId => { if (totals[catId] !== undefined) totals[catId] += share; });
   });
-  const labels = Object.keys(totals).filter(k => totals[k] > 0);
-  const data = labels.map(l => Math.round(totals[l] * 100) / 100);
-  const colors = labels.map(l => (APP_CONFIG.CATEGORIES.find(c => c.nome === l) || {}).colore || '#999');
+  const catIds = Object.keys(totals).filter(k => totals[k] > 0);
+  const labels = catIds.map(id => (APP_CONFIG.CATEGORIES.find(c => c.id === id) || {}).nome || id);
+  const data = catIds.map(id => Math.round(totals[id] * 100) / 100);
+  const colors = catIds.map(id => (APP_CONFIG.CATEGORIES.find(c => c.id === id) || {}).colore || '#999');
   return {
     type: 'doughnut',
     data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
@@ -820,22 +822,22 @@ function renderMonthComparisonChart() {
   const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
   const curTotals = {}, prevTotals = {};
-  APP_CONFIG.CATEGORIES.forEach(c => { curTotals[c.nome] = 0; prevTotals[c.nome] = 0; });
+  APP_CONFIG.CATEGORIES.forEach(c => { curTotals[c.id] = 0; prevTotals[c.id] = 0; });
 
   STATE.expenses.forEach(exp => {
     const d = new Date(dateOnly(exp.Data));
     const cats = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean);
     const share = Number(exp.Importo) / (cats.length || 1);
     if (d >= curStart && d <= now) {
-      cats.forEach(nome => { if (curTotals[nome] !== undefined) curTotals[nome] += share; });
+      cats.forEach(catId => { if (curTotals[catId] !== undefined) curTotals[catId] += share; });
     } else if (d >= prevStart && d <= prevEnd) {
-      cats.forEach(nome => { if (prevTotals[nome] !== undefined) prevTotals[nome] += share; });
+      cats.forEach(catId => { if (prevTotals[catId] !== undefined) prevTotals[catId] += share; });
     }
   });
 
   const labels = APP_CONFIG.CATEGORIES.map(c => c.nome);
-  const dataCur = labels.map(l => Math.round(curTotals[l] * 100) / 100);
-  const dataPrev = labels.map(l => Math.round(prevTotals[l] * 100) / 100);
+  const dataCur = APP_CONFIG.CATEGORIES.map(c => Math.round(curTotals[c.id] * 100) / 100);
+  const dataPrev = APP_CONFIG.CATEGORIES.map(c => Math.round(prevTotals[c.id] * 100) / 100);
 
   const hasData = dataCur.some(v => v > 0) || dataPrev.some(v => v > 0);
   $('chart-empty').hidden = hasData;
@@ -866,18 +868,18 @@ function renderCategoryAverageChart() {
   const start = new Date(now.getFullYear(), now.getMonth() - monthsBack + 1, 1);
 
   const totals = {};
-  APP_CONFIG.CATEGORIES.forEach(c => totals[c.nome] = 0);
+  APP_CONFIG.CATEGORIES.forEach(c => totals[c.id] = 0);
 
   STATE.expenses.forEach(exp => {
     const d = new Date(dateOnly(exp.Data));
     if (d < start || d > now) return;
     const cats = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean);
     const share = Number(exp.Importo) / (cats.length || 1);
-    cats.forEach(nome => { if (totals[nome] !== undefined) totals[nome] += share; });
+    cats.forEach(catId => { if (totals[catId] !== undefined) totals[catId] += share; });
   });
 
   const labels = APP_CONFIG.CATEGORIES.map(c => c.nome);
-  const data = labels.map(l => Math.round((totals[l] / monthsBack) * 100) / 100);
+  const data = APP_CONFIG.CATEGORIES.map(c => Math.round((totals[c.id] / monthsBack) * 100) / 100);
   const colors = APP_CONFIG.CATEGORIES.map(c => c.colore);
 
   const hasData = data.some(v => v > 0);
@@ -928,18 +930,18 @@ function renderBudgetTab() {
   const curStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const speseMese = {};
-  APP_CONFIG.CATEGORIES.forEach(c => speseMese[c.nome] = 0);
+  APP_CONFIG.CATEGORIES.forEach(c => speseMese[c.id] = 0);
   STATE.expenses.forEach(exp => {
     const d = new Date(dateOnly(exp.Data));
     if (d < curStart || d > now) return;
     const cats = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean);
     const share = Number(exp.Importo) / (cats.length || 1);
-    cats.forEach(nome => { if (speseMese[nome] !== undefined) speseMese[nome] += share; });
+    cats.forEach(catId => { if (speseMese[catId] !== undefined) speseMese[catId] += share; });
   });
 
   APP_CONFIG.CATEGORIES.forEach(cat => {
     const budget = (STATE.budgetConfig.budget && STATE.budgetConfig.budget[cat.id]) || 0;
-    const speso = speseMese[cat.nome] || 0;
+    const speso = speseMese[cat.id] || 0;
     const pct = budget > 0 ? Math.min(100, Math.round((speso / budget) * 100)) : 0;
     const over = budget > 0 && speso > budget;
 
@@ -1086,7 +1088,7 @@ function renderSettlementList() {
   if (!STATE.settlements || STATE.settlements.length === 0) {
     list.innerHTML = `<div class="empty-state-rich">
       <div class="empty-state-icon">💶</div>
-      <div class="empty-state-title">Nessun allineamento ancora</div>
+      <div class="empty-state-title">Nessun saldamento ancora</div>
       <div class="empty-state-sub">Quando uno dei due paga l'altro per pareggiare i conti, registralo qui sopra.</div>
     </div>`;
     return;
