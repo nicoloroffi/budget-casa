@@ -10,11 +10,11 @@
  */
 
 const ALLOWED_EMAILS = [
-  'tuaemail@gmail.com',        // <-- Utente 1
-  'emailcompagna@gmail.com'    // <-- Utente 2
+  'rofffinicolo@gmail.com',        // <-- Utente 1
+  'greta.milino@gmail.com'    // <-- Utente 2
 ];
 
-const GOOGLE_CLIENT_ID = 'INSERISCI_QUI_IL_TUO_CLIENT_ID.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '972317357128-d28ns4cgat4jbhrno3qp8tlkfsg5mk9k.apps.googleusercontent.com';
 
 const SHEET_NAME = 'Spese';
 const CONFIG_SHEET_NAME = 'Config';
