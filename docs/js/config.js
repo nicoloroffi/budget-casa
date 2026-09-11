@@ -10,8 +10,8 @@
  */
 
 const APP_CONFIG = {
-  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxz3m0PokMC_C-65FeH9PHsrU98Os0CxDkLdq6MX88r7XLC-tIBuZIaW9Ukj51S4UkIZA/exec',
-  GOOGLE_CLIENT_ID: '972317357128-d28ns4cgat4jbhrno3qp8tlkfsg5mk9k.apps.googleusercontent.com',
+  APPS_SCRIPT_URL: 'INSERISCI_QUI_URL_APPS_SCRIPT',
+  GOOGLE_CLIENT_ID: 'INSERISCI_QUI_IL_TUO_CLIENT_ID.apps.googleusercontent.com',
 
   USERS: [
     { id: 'utente1', nome: 'Nicolò', email: 'roffinicolo@gmail.com', colore: '#3D7EAA' },

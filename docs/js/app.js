@@ -1,5 +1,5 @@
 /**
- * BUDGET CASA - Logica applicazione (frontend) - v2
+ * BUDGET CASA - Logica applicazione (frontend)
  */
 
 let STATE = {
@@ -15,6 +15,31 @@ let STATE = {
 
 const $ = (id) => document.getElementById(id);
 const CATS = () => STATE.categories;
+
+// ===================== CARICAMENTO LIBRERIE SOLO SE SERVONO =====================
+// Chart.js e jsPDF sono pesanti e non servono ad ogni apertura dell'app:
+// vengono scaricati solo la prima volta che servono davvero (grafici o export PDF),
+// così l'apertura dell'app è più veloce.
+
+const _libPromises = {};
+function loadScriptOnce(url, checkFn) {
+  if (checkFn()) return Promise.resolve();
+  if (_libPromises[url]) return _libPromises[url];
+  _libPromises[url] = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Impossibile caricare ' + url));
+    document.head.appendChild(script);
+  });
+  return _libPromises[url];
+}
+function ensureChartJs() {
+  return loadScriptOnce('https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js', () => !!window.Chart);
+}
+function ensureJsPdf() {
+  return loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', () => !!(window.jspdf && window.jspdf.jsPDF));
+}
 
 // ===================== AVVIO =====================
 
@@ -161,20 +186,20 @@ function setupFooter() {
 }
 
 // ===================== TABS =====================
+// L'app si apre sempre sulla scheda "Aggiungi", senza ricordare l'ultima
+// scheda visitata: è la scheda usata più spesso e deve essere immediata.
 
 function setupTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => activateTab(btn.dataset.tab));
   });
-  const savedTab = localStorage.getItem('activeTab');
-  activateTab(savedTab && $('tab-' + savedTab) ? savedTab : 'aggiungi');
+  activateTab('aggiungi');
 }
 
 function activateTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   $('tab-' + tab).classList.add('active');
-  localStorage.setItem('activeTab', tab);
   if (tab === 'grafici') renderChart();
   if (tab === 'bilancio') renderBalance();
   if (tab === 'budget') renderBudgetTab();
@@ -253,7 +278,7 @@ async function refreshSettlements() {
   renderSettlementList();
 }
 
-// ===================== FORM: CATEGORIE / PAGATO DA =====================
+// ===================== GESTIONE CATEGORIE =====================
 
 function setupCategoryManagement() {
   renderCategoryList();
@@ -338,6 +363,8 @@ async function onDeleteCategory(cat) {
   }
 }
 
+// ===================== FORM: CATEGORIE / PAGATO DA =====================
+
 function setupCategoryChips() {
   const container = $('f-categorie');
   container.innerHTML = '';
@@ -409,6 +436,7 @@ function setupForm() {
 async function onSubmitExpense(e) {
   e.preventDefault();
   const submitBtn = $('submit-btn');
+  const submitLabel = $('submit-btn-label');
   const msg = $('form-message');
   msg.hidden = true;
 
@@ -433,9 +461,12 @@ async function onSubmitExpense(e) {
     note: $('f-note').value.trim()
   };
 
+  const isEditing = !!STATE.editingId;
   submitBtn.disabled = true;
+  submitLabel.innerHTML = '<span class="btn-spinner"></span> Salvataggio…';
+
   try {
-    if (STATE.editingId) {
+    if (isEditing) {
       await apiCall('update', payload);
       showFormMessage('Spesa aggiornata.', 'success');
     } else {
@@ -445,9 +476,10 @@ async function onSubmitExpense(e) {
     resetForm();
     await refreshExpenses();
   } catch (err) {
-    showFormMessage('Errore: ' + err.message, 'error');
+    showFormMessage('Errore: ' + err.message + ' — se la connessione è debole, riprova tra qualche secondo.', 'error');
   } finally {
     submitBtn.disabled = false;
+    submitLabel.textContent = isEditing ? 'Aggiorna spesa' : 'Salva spesa';
   }
 }
 
@@ -476,7 +508,7 @@ function resetForm() {
   $('f-perc1').value = 50;
   updateSplitDisplay();
   $('form-title').textContent = 'Nuova spesa';
-  $('submit-btn').textContent = 'Salva spesa';
+  $('submit-btn-label').textContent = 'Salva spesa';
   $('cancel-edit-btn').hidden = true;
 }
 
@@ -490,15 +522,13 @@ function editExpense(id) {
   $('f-importo').value = exp.Importo;
   $('f-note').value = exp.Note || '';
 
-  const categorieIds = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean)
-    .map(nome => (CATS().find(c => c.nome === nome || c.id === nome) || {}).id)
-    .filter(Boolean);
+  const categorieIds = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean);
   document.querySelectorAll('#f-categorie .chip').forEach(chip => {
     const selected = categorieIds.includes(chip.dataset.id);
     chip.classList.toggle('selected', selected);
     const cat = CATS().find(c => c.id === chip.dataset.id);
-    chip.style.background = selected ? cat.colore : '';
-    chip.style.borderColor = selected ? cat.colore : '';
+    chip.style.background = selected && cat ? cat.colore : '';
+    chip.style.borderColor = selected && cat ? cat.colore : '';
   });
 
   document.querySelectorAll('#f-pagato-da .payer-btn').forEach(btn => {
@@ -512,7 +542,7 @@ function editExpense(id) {
   updateSplitDisplay();
 
   $('form-title').textContent = 'Modifica spesa';
-  $('submit-btn').textContent = 'Aggiorna spesa';
+  $('submit-btn-label').textContent = 'Aggiorna spesa';
   $('cancel-edit-btn').hidden = false;
 
   activateTab('aggiungi');
@@ -686,7 +716,21 @@ function setupExport() {
   $('export-pdf-btn').addEventListener('click', exportPdf);
 }
 
-function exportPdf() {
+async function exportPdf() {
+  const btn = $('export-pdf-btn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span> Preparazione…';
+
+  try {
+    await ensureJsPdf();
+  } catch (err) {
+    alert('Impossibile caricare il modulo di esportazione PDF. Controlla la connessione e riprova.');
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+    return;
+  }
+
   const da = $('export-da').value;
   const a = $('export-a').value;
   let items = getFilteredExpenses();
@@ -696,6 +740,8 @@ function exportPdf() {
 
   if (items.length === 0) {
     alert('Nessuna spesa corrisponde ai filtri selezionati.');
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
     return;
   }
 
@@ -750,6 +796,9 @@ function exportPdf() {
   doc.text('Totale: €' + total.toFixed(2), 145, y);
 
   doc.save('budget-casa-export.pdf');
+
+  btn.disabled = false;
+  btn.innerHTML = originalHtml;
 }
 
 function truncateText(str, max) {
@@ -810,7 +859,16 @@ function toISO(d) {
   return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
 }
 
-function renderChart() {
+async function renderChart() {
+  try {
+    await ensureChartJs();
+  } catch (err) {
+    $('chart-empty').textContent = 'Impossibile caricare il modulo grafici. Controlla la connessione.';
+    $('chart-empty').hidden = false;
+    return;
+  }
+  $('chart-empty').textContent = 'Nessuna spesa nel periodo selezionato.';
+
   const tipo = $('chart-tipo').value;
 
   if (tipo === 'confronto-mesi') {

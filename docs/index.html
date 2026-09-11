@@ -15,19 +15,17 @@
   })();
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Casa</title>
+<title>Budget Casa</title>
 <meta name="theme-color" content="#1F6F63" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="apple-mobile-web-app-title" content="Casa" />
+<meta name="apple-mobile-web-app-title" content="Budget Casa" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -36,7 +34,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark">€</span>
-        <span class="brand-name">Casa</span>
+        <span class="brand-name">Budget Casa</span>
       </div>
 
       <div class="user-box">
@@ -67,10 +65,10 @@
     </div>
 
     <nav class="tabs" id="tabs" hidden>
-      <button class="tab-btn active" data-tab="bilancio"><span class="tab-icon">⚖️</span> Bilancio</button>
-      <button class="tab-btn" data-tab="aggiungi"><span class="tab-icon">➕</span> Aggiungi</button>
+      <button class="tab-btn active" data-tab="aggiungi"><span class="tab-icon">➕</span> Aggiungi</button>
       <button class="tab-btn" data-tab="elenco"><span class="tab-icon">📋</span> Elenco</button>
       <button class="tab-btn" data-tab="grafici"><span class="tab-icon">📈</span> Grafici</button>
+      <button class="tab-btn" data-tab="bilancio"><span class="tab-icon">⚖️</span> Bilancio</button>
       <button class="tab-btn" data-tab="budget"><span class="tab-icon">🎯</span> Budget</button>
     </nav>
 
@@ -129,7 +127,9 @@
 
           <div class="form-actions">
             <button type="button" id="cancel-edit-btn" class="btn-ghost" hidden>Annulla modifica</button>
-            <button type="submit" id="submit-btn" class="btn-primary">Salva spesa</button>
+            <button type="submit" id="submit-btn" class="btn-primary">
+              <span id="submit-btn-label">Salva spesa</span>
+            </button>
           </div>
           <p id="form-message" class="form-message" hidden></p>
         </form>
@@ -159,7 +159,7 @@
           <div class="list-total" id="list-total">Totale: €0.00</div>
 
           <div id="expense-list" class="expense-list">
-            <p class="empty-state">Nessuna spesa trovata.</p>
+            <p class="empty-state">Caricamento spese…</p>
           </div>
 
           <details class="export-box">
