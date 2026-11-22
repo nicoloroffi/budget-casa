@@ -10,8 +10,13 @@ let STATE = {
   categories: [],
   budgetConfig: { budget: {}, sogliaAvviso: 0 },
   editingId: null,
-  chart: null
+  chart: null,
+  older: null,      // totali delle spese piu' vecchie non caricate
+  partial: false    // true se l'elenco contiene solo gli ultimi mesi
 };
+
+const CACHE_KEY = 'bc_cache_v1';
+const RECENT_MONTHS = 13;
 
 const $ = (id) => document.getElementById(id);
 const CATS = () => STATE.categories;
@@ -101,6 +106,19 @@ function handleCredentialResponse(response) {
     return;
   }
 
+  if (_reloginPromise) {
+    if (STATE.currentUserEmail && email.toLowerCase() !== STATE.currentUserEmail.toLowerCase()) {
+      sessionStorage.setItem('idToken', idToken);
+      sessionStorage.setItem('userEmail', email);
+      location.reload();
+      return;
+    }
+    STATE.idToken = idToken;
+    sessionStorage.setItem('idToken', idToken);
+    finishRelogin();
+    return;
+  }
+
   STATE.idToken = idToken;
   STATE.currentUserEmail = email;
   sessionStorage.setItem('idToken', idToken);
@@ -136,7 +154,17 @@ async function enterApp() {
   $('user-avatar').textContent = nome.charAt(0).toUpperCase();
   $('user-avatar').style.background = user ? user.colore : '#999';
 
-  await refreshCategories();
+  const cached = loadCache(STATE.currentUserEmail);
+  if (cached) {
+    STATE.categories = cached.categories;
+    STATE.expenses = cached.expenses;
+    STATE.older = cached.older || null;
+    STATE.partial = !!cached.partial;
+    STATE.settlements = cached.settlements || [];
+    STATE.budgetConfig = cached.budgetConfig || STATE.budgetConfig;
+  } else {
+    await refreshCategories();
+  }
 
   setupTabs();
   setupCategoryChips();
@@ -153,7 +181,25 @@ async function enterApp() {
   setupLogout();
   setupFooter();
 
-  await Promise.all([refreshExpenses(), refreshBudgetConfig(), refreshSettlements()]);
+  if (cached) {
+    // Mostra subito i dati salvati, poi aggiorna in background
+    renderExpenseList();
+    populateFilterOptions();
+    renderSettlementList();
+    renderBudgetTab();
+    renderBalance();
+    const oldCats = JSON.stringify(STATE.categories);
+    await Promise.all([refreshCategories(), refreshExpenses(true), refreshBudgetConfig(), refreshSettlements()]);
+    if (JSON.stringify(STATE.categories) !== oldCats) {
+      renderCategoryList();
+      setupCategoryChips();
+      populateFilterOptions();
+      renderExpenseList();
+    }
+    saveCache();
+  } else {
+    await Promise.all([refreshExpenses(), refreshBudgetConfig(), refreshSettlements()]);
+  }
   renderBudgetTab();
   renderBalance();
 }
@@ -161,6 +207,7 @@ async function enterApp() {
 function setupLogout() {
   $('logout-btn').addEventListener('click', () => {
     sessionStorage.clear();
+    try { localStorage.removeItem(CACHE_KEY); } catch (e) {}
     location.reload();
   });
 }
@@ -207,16 +254,137 @@ function activateTab(tab) {
 
 // ===================== API =====================
 
-async function apiCall(action, payload) {
+// ----- Notifiche (toast) -----
+function showToast(msg, type) {
+  let t = $('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.className = 'toast ' + (type || 'info') + ' show';
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { t.classList.remove('show'); }, type === 'error' ? 7000 : 3500);
+}
+
+// ----- Sessione scaduta: chiede un nuovo login senza perdere quello che si sta facendo -----
+let _reloginPromise = null;
+let _reloginResolve = null;
+
+function tokenExpired() {
+  const p = parseJwt(STATE.idToken || '');
+  return !p || !p.exp || p.exp * 1000 < Date.now() + 30000;
+}
+
+function requireRelogin() {
+  if (_reloginPromise) return _reloginPromise;
+  sessionStorage.removeItem('idToken');
+  STATE.idToken = null;
+  let banner = $('session-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'session-banner';
+    banner.className = 'session-banner';
+    banner.textContent = 'Sessione scaduta: tocca "Accedi" in alto per rientrare. Quello che stavi facendo non va perso.';
+    document.body.appendChild(banner);
+  }
+  banner.hidden = false;
+  $('logged-in-box').hidden = true;
+  $('logged-out-box').hidden = false;
+  try { if (window.google && google.accounts) google.accounts.id.prompt(); } catch (e) {}
+  _reloginPromise = new Promise(resolve => { _reloginResolve = resolve; });
+  return _reloginPromise;
+}
+
+function finishRelogin() {
+  const banner = $('session-banner');
+  if (banner) banner.hidden = true;
+  $('logged-in-box').hidden = false;
+  $('logged-out-box').hidden = true;
+  const resolve = _reloginResolve;
+  _reloginPromise = null;
+  _reloginResolve = null;
+  if (resolve) resolve();
+}
+
+// ----- Chiamate al backend -----
+const API_TIMEOUT_MS = 25000;
+
+async function apiCall(action, payload, _retried) {
+  if (tokenExpired()) await requireRelogin();
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const e = new Error('Sei offline. Controlla la connessione e riprova.');
+    e.network = true;
+    throw e;
+  }
+
   const body = Object.assign({ action: action, idToken: STATE.idToken }, payload || {});
-  const res = await fetch(APP_CONFIG.APPS_SCRIPT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(body)
-  });
-  const json = await res.json();
-  if (json.error) throw new Error(json.error);
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), API_TIMEOUT_MS) : null;
+  let res;
+  try {
+    res = await fetch(APP_CONFIG.APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+      signal: ctrl ? ctrl.signal : undefined
+    });
+  } catch (err) {
+    const e = new Error('Connessione assente o troppo lenta. Controlla la rete e riprova.');
+    e.network = true;
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+
+  let json;
+  try {
+    json = await res.json();
+  } catch (err) {
+    const e = new Error('Risposta non valida dal server. Riprova tra qualche secondo.');
+    e.network = true;
+    throw e;
+  }
+  if (json.error) {
+    if (/non autorizzato/i.test(json.error) && !_retried) {
+      await requireRelogin();
+      return apiCall(action, payload, true);
+    }
+    throw new Error(json.error);
+  }
   return json.data;
+}
+
+function newClientId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+// ----- Cache locale: mostra subito gli ultimi dati, poi aggiorna in background -----
+function saveCache() {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      email: STATE.currentUserEmail,
+      ts: Date.now(),
+      expenses: STATE.expenses.filter(e => !e._pending),
+      older: STATE.older,
+      partial: STATE.partial,
+      settlements: (STATE.settlements || []).filter(s => !s._pending),
+      budgetConfig: STATE.budgetConfig,
+      categories: STATE.categories
+    }));
+  } catch (e) {}
+}
+
+function loadCache(email) {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (!c || !email || String(c.email).toLowerCase() !== String(email).toLowerCase()) return null;
+    if (!Array.isArray(c.expenses) || !Array.isArray(c.categories) || c.categories.length === 0) return null;
+    return c;
+  } catch (e) { return null; }
 }
 
 async function refreshCategories() {
@@ -224,21 +392,51 @@ async function refreshCategories() {
     const data = await apiCall('getCategories');
     STATE.categories = (data && data.length) ? data : [];
   } catch (err) {
-    STATE.categories = [];
     console.error(err);
   }
 }
 
-async function refreshExpenses() {
-  renderSkeletonList();
+async function refreshExpenses(silent) {
+  if (!silent || STATE.expenses.length === 0) renderSkeletonList();
   try {
-    STATE.expenses = await apiCall('list');
+    const data = await apiCall('list', { mesi: RECENT_MONTHS });
+    let items;
+    if (Array.isArray(data)) {
+      items = data; STATE.older = null; STATE.partial = false;
+    } else {
+      items = data.items || []; STATE.older = data.older || null; STATE.partial = !!data.partial;
+    }
+    // Mantiene le spese appena inserite non ancora confermate dal server
+    const ids = new Set(items.map(e => e.ID));
+    const pending = STATE.expenses.filter(e => e._pending && !ids.has(e.ID));
+    STATE.expenses = items.concat(pending);
+    saveCache();
   } catch (err) {
-    STATE.expenses = [];
     console.error(err);
+    if (STATE.expenses.length === 0) STATE.expenses = [];
+    else showToast('Dati non aggiornati: ' + err.message, 'error');
   }
   renderExpenseList();
   populateFilterOptions();
+}
+
+async function loadAllExpenses() {
+  const btn = $('load-all-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Caricamento…'; }
+  try {
+    const all = await apiCall('list');
+    const ids = new Set(all.map(e => e.ID));
+    const pending = STATE.expenses.filter(e => e._pending && !ids.has(e.ID));
+    STATE.expenses = all.concat(pending);
+    STATE.older = null;
+    STATE.partial = false;
+    saveCache();
+    renderExpenseList();
+    renderBalance();
+  } catch (err) {
+    showToast(err.message, 'error');
+    renderExpenseList();
+  }
 }
 
 function renderSkeletonList() {
@@ -263,6 +461,7 @@ async function refreshBudgetConfig() {
   try {
     const data = await apiCall('getBudget');
     STATE.budgetConfig = data || { budget: {}, sogliaAvviso: 0 };
+    saveCache();
   } catch (err) {
     console.error(err);
   }
@@ -270,10 +469,14 @@ async function refreshBudgetConfig() {
 
 async function refreshSettlements() {
   try {
-    STATE.settlements = await apiCall('listSettlements');
+    const data = await apiCall('listSettlements');
+    const ids = new Set(data.map(x => x.ID));
+    const pending = (STATE.settlements || []).filter(x => x._pending && !ids.has(x.ID));
+    STATE.settlements = data.concat(pending);
+    saveCache();
   } catch (err) {
-    STATE.settlements = [];
     console.error(err);
+    if (!STATE.settlements) STATE.settlements = [];
   }
   renderSettlementList();
 }
@@ -462,25 +665,72 @@ async function onSubmitExpense(e) {
   };
 
   const isEditing = !!STATE.editingId;
-  submitBtn.disabled = true;
-  submitLabel.innerHTML = '<span class="btn-spinner"></span> Salvataggio…';
+  const editId = STATE.editingId;
+  if (!isEditing) payload.clientId = newClientId();
+  const localId = isEditing ? editId : payload.clientId;
+  const local = buildLocalExpense(payload, localId);
+  let backup = null;
 
-  try {
-    if (isEditing) {
-      await apiCall('update', payload);
-      showFormMessage('Spesa aggiornata.', 'success');
-    } else {
-      await apiCall('add', payload);
-      showFormMessage('Spesa salvata.', 'success');
+  // Aggiornamento ottimistico: la spesa compare subito, il salvataggio avviene in background
+  if (isEditing) {
+    const idx = STATE.expenses.findIndex(x => x.ID === editId);
+    if (idx !== -1) {
+      backup = STATE.expenses[idx];
+      STATE.expenses[idx] = Object.assign({}, backup, local, { _pending: true });
     }
-    resetForm();
-    await refreshExpenses();
-  } catch (err) {
-    showFormMessage('Errore: ' + err.message + ' — se la connessione è debole, riprova tra qualche secondo.', 'error');
-  } finally {
-    submitBtn.disabled = false;
-    submitLabel.textContent = isEditing ? 'Aggiorna spesa' : 'Salva spesa';
+  } else {
+    STATE.expenses.unshift(local);
   }
+  resetForm();
+  showFormMessage(isEditing ? 'Spesa aggiornata.' : 'Spesa salvata.', 'success');
+  renderExpenseList();
+  renderBalance();
+  renderBudgetTab();
+
+  apiCall(isEditing ? 'update' : 'add', payload).then(async () => {
+    const cur = STATE.expenses.find(x => x.ID === localId);
+    if (cur) delete cur._pending;
+    await refreshExpenses(true);
+    renderBalance();
+    renderBudgetTab();
+  }).catch(err => {
+    // Annulla la modifica locale e rimette i dati nel modulo per riprovare
+    if (isEditing) {
+      const idx = STATE.expenses.findIndex(x => x.ID === editId);
+      if (idx !== -1 && backup) STATE.expenses[idx] = backup;
+    } else {
+      STATE.expenses = STATE.expenses.filter(x => x.ID !== localId);
+    }
+    renderExpenseList();
+    renderBalance();
+    renderBudgetTab();
+    fillExpenseForm(local, isEditing);
+    STATE.editingId = isEditing ? editId : null;
+    showFormMessage('Spesa NON salvata: ' + err.message + ' I dati sono di nuovo nel modulo: premi di nuovo Salva.', 'error');
+    showToast('Spesa non salvata: ' + err.message, 'error');
+    activateTab('aggiungi');
+  });
+}
+
+function buildLocalExpense(payload, id) {
+  const importo = parseFloat(payload.importo) || 0;
+  const perc1 = Math.max(0, Math.min(100, Number(payload.percentuale1) || 0));
+  const perc2 = 100 - perc1;
+  const r2 = (n) => Math.round(n * 100) / 100;
+  return {
+    ID: id,
+    Data: payload.data,
+    Nome: payload.nome,
+    Categorie: (payload.categorie || []).join(', '),
+    PagatoDa: payload.pagatoDa,
+    Importo: importo,
+    Percentuale1: perc1,
+    Percentuale2: perc2,
+    ImportoUtente1: r2(importo * perc1 / 100),
+    ImportoUtente2: r2(importo * perc2 / 100),
+    Note: payload.note || '',
+    _pending: true
+  };
 }
 
 function showFormMessage(text, type) {
@@ -514,8 +764,14 @@ function resetForm() {
 
 function editExpense(id) {
   const exp = STATE.expenses.find(e => e.ID === id);
-  if (!exp) return;
+  if (!exp || exp._pending) return;
   STATE.editingId = id;
+  fillExpenseForm(exp, true);
+  activateTab('aggiungi');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function fillExpenseForm(exp, editing) {
 
   $('f-data').value = dateOnly(exp.Data);
   $('f-nome').value = exp.Nome;
@@ -541,22 +797,30 @@ function editExpense(id) {
   $('f-perc1').value = exp.Percentuale1;
   updateSplitDisplay();
 
-  $('form-title').textContent = 'Modifica spesa';
-  $('submit-btn-label').textContent = 'Aggiorna spesa';
-  $('cancel-edit-btn').hidden = false;
-
-  activateTab('aggiungi');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  $('form-title').textContent = editing ? 'Modifica spesa' : 'Nuova spesa';
+  $('submit-btn-label').textContent = editing ? 'Aggiorna spesa' : 'Salva spesa';
+  $('cancel-edit-btn').hidden = !editing;
 }
 
 async function removeExpense(id) {
+  const target = STATE.expenses.find(e => e.ID === id);
+  if (!target || target._pending) return;
   const ok = await showConfirmDialog('Eliminare questa spesa? L\'operazione non è reversibile.');
   if (!ok) return;
+  const idx = STATE.expenses.findIndex(e => e.ID === id);
+  STATE.expenses.splice(idx, 1);
+  renderExpenseList();
+  renderBalance();
+  renderBudgetTab();
   try {
     await apiCall('delete', { id });
-    await refreshExpenses();
+    saveCache();
   } catch (err) {
-    alert('Errore: ' + err.message);
+    STATE.expenses.splice(Math.min(idx, STATE.expenses.length), 0, target);
+    renderExpenseList();
+    renderBalance();
+    renderBudgetTab();
+    showToast('Spesa non eliminata: ' + err.message, 'error');
   }
 }
 
@@ -637,6 +901,7 @@ function getFilteredExpenses() {
 
 function renderExpenseList() {
   const list = $('expense-list');
+  renderLoadAllButton();
   const items = getFilteredExpenses();
 
   const total = items.reduce((sum, e) => sum + (Number(e.Importo) || 0), 0);
@@ -663,12 +928,12 @@ function renderExpenseList() {
     const payer = APP_CONFIG.USERS.find(u => u.id === exp.PagatoDa);
     const tags = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean).map(catId => {
       const cat = CATS().find(c => c.id === catId) || { colore: '#999', nome: catId };
-      return `<span class="tag" style="background:${cat.colore}">${cat.nome}</span>`;
+      return `<span class="tag" style="background:${cat.colore}">${escapeHtml(cat.nome)}</span>`;
     }).join('');
     const noteHtml = exp.Note ? `<div class="expense-note">📝 ${escapeHtml(exp.Note)}</div>` : '';
 
     const div = document.createElement('div');
-    div.className = 'expense-item';
+    div.className = 'expense-item' + (exp._pending ? ' pending' : '');
     div.innerHTML = `
       <div class="expense-payer-badge" style="background:${payer ? payer.colore : '#999'}">${payer ? payer.nome.charAt(0).toUpperCase() : '?'}</div>
       <div class="expense-main">
@@ -689,6 +954,23 @@ function renderExpenseList() {
     div.querySelector('[data-action="delete"]').addEventListener('click', () => removeExpense(exp.ID));
     list.appendChild(div);
   });
+}
+
+function renderLoadAllButton() {
+  const list = $('expense-list');
+  let wrap = $('load-all-wrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'load-all-wrap';
+    wrap.className = 'load-all-wrap';
+    list.parentNode.insertBefore(wrap, list.nextSibling);
+  }
+  if (STATE.partial && STATE.older) {
+    wrap.innerHTML = `<p class="empty-state">Sono mostrate le spese degli ultimi ${RECENT_MONTHS} mesi (il bilancio include anche le ${STATE.older.count} più vecchie).</p><button type="button" class="btn-ghost" id="load-all-btn">Carica tutto lo storico</button>`;
+    $('load-all-btn').addEventListener('click', loadAllExpenses);
+  } else {
+    wrap.innerHTML = '';
+  }
 }
 
 function escapeHtml(str) {
@@ -1207,35 +1489,52 @@ function closeSettlementForm() {
 async function onSubmitSettlement(e) {
   e.preventDefault();
   const daBtn = document.querySelector('#s-da .payer-btn.selected');
-  if (!daBtn) return alert('Seleziona chi paga.');
+  if (!daBtn) return showToast('Seleziona chi paga.', 'error');
   const daUtente = daBtn.dataset.id;
   const aUtente = APP_CONFIG.USERS.find(u => u.id !== daUtente).id;
-  const importo = parseFloat($('s-importo').value);
-  if (!importo || importo <= 0) return alert('Inserisci un importo valido.');
+  const importo = parseFloat(String($('s-importo').value).replace(',', '.'));
+  if (!importo || importo <= 0) return showToast('Inserisci un importo valido.', 'error');
+
+  const clientId = newClientId();
+  const payload = { daUtente, aUtente, importo, data: $('s-data').value, nota: $('s-nota').value.trim(), clientId };
+  const local = { ID: clientId, Data: payload.data, DaUtente: daUtente, AUtente: aUtente, Importo: importo, Nota: payload.nota, _pending: true };
+
+  // Aggiornamento ottimistico: saldo e storico cambiano subito
+  STATE.settlements = (STATE.settlements || []).concat([local]);
+  closeSettlementForm();
+  renderSettlementList();
+  renderBalance();
 
   try {
-    await apiCall('addSettlement', {
-      daUtente, aUtente, importo,
-      data: $('s-data').value,
-      nota: $('s-nota').value.trim()
-    });
-    closeSettlementForm();
+    await apiCall('addSettlement', payload);
+    delete local._pending;
     await refreshSettlements();
     renderBalance();
   } catch (err) {
-    alert('Errore: ' + err.message);
+    STATE.settlements = STATE.settlements.filter(x => x.ID !== clientId);
+    renderSettlementList();
+    renderBalance();
+    showToast('Saldamento NON registrato: ' + err.message, 'error');
   }
 }
 
 async function removeSettlement(id) {
+  const target = (STATE.settlements || []).find(x => x.ID === id);
+  if (!target || target._pending) return;
   const ok = await showConfirmDialog('Eliminare questo saldamento?');
   if (!ok) return;
+  const idx = STATE.settlements.findIndex(x => x.ID === id);
+  STATE.settlements.splice(idx, 1);
+  renderSettlementList();
+  renderBalance();
   try {
     await apiCall('deleteSettlement', { id });
-    await refreshSettlements();
-    renderBalance();
+    saveCache();
   } catch (err) {
-    alert('Errore: ' + err.message);
+    STATE.settlements.splice(Math.min(idx, STATE.settlements.length), 0, target);
+    renderSettlementList();
+    renderBalance();
+    showToast('Saldamento non eliminato: ' + err.message, 'error');
   }
 }
 
@@ -1290,6 +1589,12 @@ function computeBalance() {
     share2 += Number(exp.ImportoUtente2) || 0;
   });
 
+  if (STATE.older) {
+    paid1 += Number(STATE.older.paid && STATE.older.paid[u1.id]) || 0;
+    paid2 += Number(STATE.older.paid && STATE.older.paid[u2.id]) || 0;
+    share1 += Number(STATE.older.share1) || 0;
+    share2 += Number(STATE.older.share2) || 0;
+  }
   let balance1 = paid1 - share1;
   (STATE.settlements || []).forEach(s => {
     const importo = toNum(s.Importo);
