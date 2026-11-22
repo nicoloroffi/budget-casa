@@ -17,6 +17,9 @@ let STATE = {
 
 const CACHE_KEY = 'bc_cache_v1';
 const RECENT_MONTHS = 13;
+const PAGE_SIZE = 20;
+let _visibleCount = PAGE_SIZE;
+let _listSignature = '';
 
 const $ = (id) => document.getElementById(id);
 const CATS = () => STATE.categories;
@@ -904,6 +907,10 @@ function renderExpenseList() {
   renderLoadAllButton();
   const items = getFilteredExpenses();
 
+  // Paginazione: se cambiano filtri/ricerca/ordinamento si riparte dalle prime 20
+  const signature = [$('search-input').value, $('filter-categoria').value, $('filter-pagatoDa').value, $('sort-select').value].join('|');
+  if (signature !== _listSignature) { _listSignature = signature; _visibleCount = PAGE_SIZE; }
+
   const total = items.reduce((sum, e) => sum + (Number(e.Importo) || 0), 0);
   $('list-total').textContent = 'Totale: €' + total.toFixed(2) + ' (' + items.length + (items.length === 1 ? ' spesa' : ' spese') + ')';
 
@@ -924,7 +931,7 @@ function renderExpenseList() {
   }
 
   list.innerHTML = '';
-  items.forEach(exp => {
+  items.slice(0, _visibleCount).forEach(exp => {
     const payer = APP_CONFIG.USERS.find(u => u.id === exp.PagatoDa);
     const tags = (exp.Categorie || '').split(',').map(s => s.trim()).filter(Boolean).map(catId => {
       const cat = CATS().find(c => c.id === catId) || { colore: '#999', nome: catId };
@@ -954,6 +961,18 @@ function renderExpenseList() {
     div.querySelector('[data-action="delete"]').addEventListener('click', () => removeExpense(exp.ID));
     list.appendChild(div);
   });
+
+  if (items.length > _visibleCount) {
+    const remaining = items.length - _visibleCount;
+    const more = document.createElement('div');
+    more.className = 'load-all-wrap';
+    more.innerHTML = `<button type="button" class="btn-ghost" id="show-more-btn">Altro (${Math.min(PAGE_SIZE, remaining)} di ${remaining} rimaste)</button>`;
+    more.querySelector('button').addEventListener('click', () => {
+      _visibleCount += PAGE_SIZE;
+      renderExpenseList();
+    });
+    list.appendChild(more);
+  }
 }
 
 function renderLoadAllButton() {
